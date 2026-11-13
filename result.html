@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>판정 결과 · V-PARC</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  /* 10/13 와이어프레임(UI-06·07·08)과 같은 구성: 위 사진 + 아래 시트 */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #fff; color: #0E0F11; overflow: hidden;
+    font-family: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", sans-serif; letter-spacing: -0.02em; }
+  .app { position: fixed; inset: 0; display: flex; flex-direction: column; }
+  .photo { position: relative; flex: 1; min-height: 0; background: #111; overflow: hidden; }
+  .photo img { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+  .back { position: absolute; left: 16px; top: calc(env(safe-area-inset-top) + 12px); width: 40px; height: 40px; border-radius: 20px;
+    background: #fff; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 6px rgba(0,0,0,.2); z-index: 3; border: 0; }
+  .cap { position: absolute; right: 16px; bottom: 36px; background: rgba(0,0,0,.55); color: #fff; font-size: 12px;
+    padding: 6px 10px; border-radius: 999px; z-index: 3; }
+  .ovl { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+  .prob { position: absolute; border: 3px solid #E11900; border-radius: 10px; }
+  .tag { position: absolute; transform: translate(-6px, calc(-100% - 8px)); background: #E11900; color: #fff; font-size: 13px; font-weight: 700;
+    padding: 6px 12px; border-radius: 999px; white-space: nowrap; }
+  .target { position: absolute; border: 2.5px dashed #fff; border-radius: 10px; background: rgba(255,255,255,.08); }
+  .bubble { position: absolute; transform: translate(-50%, calc(-100% - 10px)); background: #fff; color: #0E0F11; font-size: 13px; font-weight: 600;
+    padding: 6px 12px; border-radius: 999px; white-space: nowrap; box-shadow: 0 1px 6px rgba(0,0,0,.2); }
+  .alert { position: absolute; left: 50%; top: calc(50% - 12px); transform: translate(-50%, -50%); background: rgba(40,40,40,.75); color: #fff;
+    font-size: 14px; font-weight: 600; padding: 9px 14px; border-radius: 999px; display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+  svg.arrow { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .nophoto { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #9aa0a6; font-size: 15px; padding: 24px; text-align: center; }
+  .sheet { position: relative; z-index: 4; background: #fff; border-radius: 22px 22px 0 0; margin-top: -24px;
+    padding: 10px 20px calc(env(safe-area-inset-bottom) + 14px); box-shadow: 0 -2px 12px rgba(0,0,0,.08);
+    /* 적합·부적합·추가 확인 모두 같은 높이: 가장 긴 부적합 기준, 버튼은 맨 아래에 붙임 */
+    height: calc(312px + env(safe-area-inset-bottom)); flex-shrink: 0; display: flex; flex-direction: column; }
+  .handle { width: 36px; height: 4px; border-radius: 2px; background: #D5D8DD; margin: 0 auto 8px; }
+  .head { display: flex; gap: 12px; align-items: center; }
+  .ico { width: 44px; height: 44px; border-radius: 22px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .ico.ok { background: #05A357; } .ico.bad { background: #E11900; } .ico.review { background: #F2A900; }
+  .label { font-size: 13px; font-weight: 700; } .label.ok { color: #05A357; } .label.bad { color: #E11900; } .label.review { color: #E8A200; }
+  h1 { font-size: 21px; margin: 2px 0 0; display: flex; align-items: center; gap: 8px; }
+  .chip { font-size: 12px; font-weight: 600; color: #6B7079; background: #F3F4F6; padding: 3px 7px; border-radius: 6px; }
+  .sub { font-size: 15px; color: #33363B; margin: 14px 0 0; }
+  .info { display: flex; background: #F3F4F6; border-radius: 12px; margin-top: 14px; padding: 12px 0; }
+  .info > div { flex: 1; padding: 0 12px; font-size: 12px; color: #6B7079; }
+  .info > div + div { border-left: 1px solid #E2E4E8; }
+  .info b { display: block; font-size: 15px; color: #0E0F11; margin-top: 4px; }
+  .reason { display: flex; gap: 12px; align-items: center; background: #F3F4F6; border-radius: 12px; margin-top: 14px; padding: 12px; }
+  .reason .sq { width: 36px; height: 36px; border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .reason b { display: block; font-size: 15px; } .reason span { font-size: 12.5px; color: #6B7079; }
+  .note { font-size: 12.5px; color: #6B7079; margin: 10px 0 0; }
+  .content { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-bottom: 6px; }  /* 남는 공간을 위아래로 나눠 가운데 */
+  .btns { display: flex; gap: 8px; }
+  .handle { flex-shrink: 0; }
+  button.b { appearance: none; border: 0; font: inherit; font-weight: 700; font-size: 16px; height: 54px; border-radius: 12px; }
+  .b.gray { background: #F3F4F6; color: #0E0F11; flex: 1; } .b.black { background: #0E0F11; color: #fff; flex: 1.6; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="photo" id="photo">
+    <img id="img" alt="">
+    <div class="ovl" id="ovl"></div>
+    <button class="back" aria-label="뒤로"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0E0F11" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
+    <div class="cap" id="cap"></div>
+    <div class="nophoto" id="nophoto" hidden>사람을 가리지 못한 사진은 보내지 않았어요</div>
+  </div>
+  <div class="sheet">
+    <div class="handle"></div>
+    <div class="content">
+    <div class="head">
+      <div class="ico" id="ico"></div>
+      <div><div class="label" id="label"></div><h1 id="title"></h1></div>
+    </div>
+    <p class="sub" id="sub"></p>
+    <div id="body"></div>
+    </div>
+    <div class="btns" id="btns"></div>
+  </div>
+</div>
+<script type="module">
+import { RESULT_TEXT, REVIEW_TEXT, SCREEN_TEXT } from './messages.js';
+import { makeApi, uuid } from './api.js';
+// 판정 API의 Decision을 render()에 넘긴다. 시험할 때는 주소 뒤 파라미터로:
+//  ?r=ok  |  ?r=bad&code=B1  |  ?r=review&why=blur  |  ?r=review&why=nophoto
+//  box·target = 사진 기준 비율 x,y,w,h (문제 위치·옮길 자리), place·time = 촬영 위치·시각
+const q = new URLSearchParams(location.search), num = (s) => s.split(',').map(Number);
+// 결과별 예시 사진 (팀 수집 사진, 메타데이터 제거)
+const SAMPLE = {
+  ok:     { img: 'ok.jpg',     time: '오후 1:20',  place: '아주대 정문' },
+  bad:    { img: 'bad.jpg',    time: '오후 12:35', place: '아주대 삼거리', code: 'B1',
+            box: '0.36,0.44,0.30,0.20', target: '0.68,0.68,0.28,0.12' },
+  review: { img: 'review.jpg', time: '오후 9:47',  place: '아주대 후문' },
+};
+const r0 = q.get('r') || 'bad', S = SAMPLE[r0] || SAMPLE.bad;
+const preview = {
+  result: r0, code: q.get('code') || S.code || 'B1', why: q.get('why') || 'blur',
+  receipt: q.get('receipt') || 'V-1108-0427', time: q.get('time') || S.time, place: q.get('place') || S.place,
+  usage: { min: 12, fee: 1860 }, photo: q.get('why') === 'nophoto' ? null : (q.get('img') || S.img),
+  box: num(q.get('box') || S.box || '0.36,0.44,0.30,0.20'), target: num(q.get('target') || S.target || '0.68,0.68,0.28,0.12'),
+};
+// 촬영 화면에서 넘어온 실제 판정 (shoot.html → sessionStorage). 없으면 위 미리보기 값
+let live = null;
+if (q.get('from') === 'shoot') { try { live = JSON.parse(sessionStorage.getItem('vparc.result') || 'null'); } catch {} }
+const decision = live || preview;
+const $ = (id) => document.getElementById(id);
+const ICON = {
+  ok: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  bad: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  review: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 6v8M12 18.2v.1"/></svg>',
+};
+const DOTS = '<svg width="18" height="18" viewBox="0 0 18 18" fill="#E11900">' + [3, 9, 15].flatMap(y => [3, 9, 15].map(x => `<circle cx="${x}" cy="${y}" r="1.8"/>`)).join('') + '</svg>';
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const fee = (n) => n.toLocaleString('ko-KR') + '원';
+
+function info(items) {
+  const d = el('div', 'info');
+  for (const [k, v] of items) { const c = el('div', null, k); c.appendChild(el('b', null, v)); d.appendChild(c); }
+  return d;
+}
+
+// 사진 비율 좌표 → 화면 좌표 (사진은 가로를 꽉 채우고 위쪽 기준으로 놓음)
+function layoutPhoto(img) {
+  const P = $('photo'), W = P.clientWidth, H = P.clientHeight;
+  const s = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+  const iw = img.naturalWidth * s, ih = img.naturalHeight * s, ox = (W - iw) / 2, oy = Math.min(0, (H - ih) * 0.35);
+  img.style.width = iw + 'px'; img.style.height = ih + 'px'; img.style.left = ox + 'px'; img.style.top = oy + 'px';
+  return ([x, y, w, h]) => ({ x: ox + x * iw, y: oy + y * ih, w: w * iw, h: h * ih });
+}
+
+function overlayBad(map, d) {
+  const o = $('ovl'), b = map(d.box), R = RESULT_TEXT[d.code] || { tag: '주차 위치' };
+  if (!d.target) { const pr = el('div', 'prob'); Object.assign(pr.style, { left: b.x + 'px', top: b.y + 'px', width: b.w + 'px', height: b.h + 'px' }); o.appendChild(pr);
+    const tg = el('div', 'tag', R.tag); Object.assign(tg.style, { left: b.x + 'px', top: b.y + 'px' }); o.appendChild(tg); return; }
+  const t = map(d.target);
+  const pr = el('div', 'prob'); Object.assign(pr.style, { left: b.x + 'px', top: b.y + 'px', width: b.w + 'px', height: b.h + 'px' }); o.appendChild(pr);
+  const tg = el('div', 'tag', R.tag); Object.assign(tg.style, { left: b.x + 'px', top: b.y + 'px' }); o.appendChild(tg);
+  const c1 = { x: b.x + b.w / 2, y: b.y + b.h / 2 }, c2 = { x: t.x + t.w / 2, y: t.y + t.h / 2 }, bu_gap = 8;
+  const ta = el('div', 'target'); Object.assign(ta.style, { left: t.x + 'px', top: t.y + 'px', width: t.w + 'px', height: t.h + 'px' }); o.appendChild(ta);
+  const bu = el('div', 'bubble', SCREEN_TEXT.bad.bubble); Object.assign(bu.style, { left: t.x + t.w / 2 + 'px', top: (c1.y < c2.y ? t.y + t.h + bu_gap : t.y) + 'px' }); if (c1.y < c2.y) bu.style.transform = 'translate(-50%, 0)'; o.appendChild(bu);
+  const W = o.clientWidth, bw = bu.offsetWidth;   // 말풍선이 화면 밖으로 안 나가게
+  bu.style.left = Math.min(W - 8 - bw / 2, Math.max(8 + bw / 2, t.x + t.w / 2)) + 'px';
+  // 문제 위치 가장자리 → 옮길 자리 가장자리로 흰 화살표
+  const edge = (r, from, to) => { const dx = to.x - from.x, dy = to.y - from.y, k = Math.min(Math.abs(r.w / 2 / (dx || 1e-6)), Math.abs(r.h / 2 / (dy || 1e-6))); return { x: from.x + dx * k, y: from.y + dy * k }; };
+  const p1 = edge(b, c1, c2), p2 = edge(t, c2, c1);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'arrow');
+  svg.innerHTML = `<defs><marker id="h" markerWidth="8" markerHeight="8" refX="5" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#fff"/></marker></defs>
+    <line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#fff" stroke-width="3.5" stroke-linecap="round" marker-end="url(#h)"/>`;
+  o.appendChild(svg);
+}
+
+async function render(d) {
+  const S = SCREEN_TEXT[d.result];
+  $('ico').className = 'ico ' + d.result; $('ico').innerHTML = ICON[d.result];
+  $('label').className = 'label ' + d.result; $('label').textContent = S.label;
+  const body = $('body'), btns = $('btns'); body.innerHTML = ''; btns.innerHTML = ''; $('ovl').innerHTML = '';
+  const t = $('title'); t.textContent = '';
+  if (d.result === 'ok') {
+    t.append(S.title, el('span', 'chip', S.chip)); $('sub').textContent = d.caution || S.sub;
+    body.appendChild(info([['이용 시간', d.usage.min + '분'], ['요금', fee(d.usage.fee)], ['반납 위치', d.place]]));
+    btns.append(el('button', 'b gray', S.left), el('button', 'b black', S.main));
+  } else if (d.result === 'bad') {
+    const R = RESULT_TEXT[d.code] || { tag: '주차 위치', title: d.title || '주차 위치를 옮겨 주세요', detail: d.message || '' }; t.textContent = R.title; $('sub').textContent = d.target ? S.sub : '안전한 곳으로 옮긴 뒤 다시 찍어 주세요.';
+    const r = el('div', 'reason'), sq = el('div', 'sq'); sq.innerHTML = DOTS; const tx = el('div'); tx.append(el('b', null, R.tag), el('span', null, R.detail)); r.append(sq, tx);
+    body.append(r, el('p', 'note', S.note));
+    btns.append(el('button', 'b gray', S.left), el('button', 'b black', S.main));
+  } else {
+    const V = REVIEW_TEXT[d.why] || REVIEW_TEXT.unsure; t.textContent = S.title; $('sub').textContent = V.sub;
+    body.appendChild(info([['접수 번호', d.receipt], ['다음엔', V.tip]]));
+    const b = el('button', 'b black', S.main); b.style.flex = '1'; btns.append(b);
+  }
+  if (!d.photo) { $('nophoto').hidden = false; $('cap').hidden = true; $('img').hidden = true; return; }
+  $('cap').textContent = `${d.time} · ${d.place}` + (d.mock ? ' · 모의 판정' : '');
+  const img = $('img'); img.src = d.photo; await img.decode();
+  const map = layoutPhoto(img);
+  if (d.result === 'bad' && d.box) overlayBad(map, d);
+  if (d.result === 'review' && REVIEW_TEXT[d.why]?.pill) {
+    const a = el('div', 'alert'); a.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M4 8h16M4 16h16M8 4l-4 4 4 4M16 12l4 4-4 4"/></svg>';
+    a.append(REVIEW_TEXT[d.why].pill); $('ovl').appendChild(a);
+  }
+}
+// ---- 버튼: 반납 종료(finish) 또는 다시 찍기 ----
+const api = makeApi();
+const OUTCOME = { ok: 'SUITABLE', bad: 'UNSUITABLE_ACCEPTED', review: 'REVIEW' };
+function retake() { location.href = 'shoot.html'; }
+async function finish(d) {
+  const btns = [...document.querySelectorAll('#btns button')]; btns.forEach(b => b.disabled = true);
+  let res = null, err = null;
+  if (live && d.returnId) {
+    try { res = await api.finish(d.returnId, { request_id: uuid(), judgment_id: d.judgmentId, outcome: OUTCOME[d.result] }); }
+    catch (e) { err = e; }
+  }
+  if (err) { btns.forEach(b => b.disabled = false); $('sub').textContent = '기록을 보내지 못했어요. 다시 눌러 주세요.'; return; }
+  try { sessionStorage.removeItem('vparc.return'); sessionStorage.removeItem('vparc.result'); } catch {}
+  done(d, res);
+}
+function done(d, res) {
+  const ok = d.result === 'ok';
+  $('label').textContent = '반납 완료'; $('label').className = 'label ' + d.result;
+  $('title').textContent = ok ? '반납이 끝났어요' : (d.result === 'bad' ? '부적합으로 기록하고 반납했어요' : '반납은 끝났어요');
+  $('sub').textContent = d.result === 'review' ? '확인이 끝나면 결과를 알려 드릴게요.' : '이용해 주셔서 고마워요.';
+  const body = $('body'); body.innerHTML = '';
+  body.appendChild(info([['접수 번호', (res && res.receipt_no) || d.receipt || '-'], ['촬영 횟수', (res && res.attempts) || d.attempt || 1]]));
+  const btns = $('btns'); btns.innerHTML = '';
+  const b = el('button', 'b black', '처음으로'); b.style.flex = '1'; b.onclick = () => { location.href = './'; }; btns.append(b);
+}
+function wire(d) {
+  const [left, main] = [...document.querySelectorAll('#btns button')].length === 2 ? [...document.querySelectorAll('#btns button')] : [null, document.querySelector('#btns button')];
+  if (d.result === 'ok') { left.onclick = retake; main.onclick = () => finish(d); }
+  else if (d.result === 'bad') { left.onclick = () => finish(d); main.onclick = retake; }
+  else main.onclick = () => finish(d);
+}
+document.querySelector('.back').onclick = () => (live ? retake() : history.back());
+
+render(decision).then(() => wire(decision));
+addEventListener('resize', () => render(decision).then(() => wire(decision)));
+window.render = render;   // 판정 API 연결용
+</script>
+</body>
+</html>
