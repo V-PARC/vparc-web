@@ -41,7 +41,8 @@
   .chip { font-size: 12px; font-weight: 600; color: #6B7079; background: #F3F4F6; padding: 3px 7px; border-radius: 6px; }
   .sub { font-size: 15px; color: #33363B; margin: 14px 0 0; }
   .info { display: flex; background: #F3F4F6; border-radius: 12px; margin-top: 14px; padding: 12px 0; }
-  .info > div { flex: 1; padding: 0 12px; font-size: 12px; color: #6B7079; }
+  .info > div { flex: 1; padding: 0 12px; font-size: 12px; color: #6B7079; word-break: keep-all; }
+  .info.review > div:first-child { flex: 0 0 auto; }   /* 접수 번호 칸은 내용만큼, '다음엔' 칸을 넓게 (11/13 아이폰에서 줄바꿈 어색) */
   .info > div + div { border-left: 1px solid #E2E4E8; }
   .info b { display: block; font-size: 15px; color: #0E0F11; margin-top: 4px; }
   .reason { display: flex; gap: 12px; align-items: center; background: #F3F4F6; border-radius: 12px; margin-top: 14px; padding: 12px; }
@@ -166,7 +167,7 @@ async function render(d) {
     btns.append(el('button', 'b gray', S.left), el('button', 'b black', S.main));
   } else {
     const V = REVIEW_TEXT[d.why] || REVIEW_TEXT.unsure; t.textContent = S.title; $('sub').textContent = V.sub;
-    body.appendChild(info([['접수 번호', d.receipt], ['다음엔', V.tip]]));
+    const card = info([['접수 번호', d.receipt], ['다음엔', V.tip]]); card.classList.add('review'); body.appendChild(card);
     const b = el('button', 'b black', S.main); b.style.flex = '1'; btns.append(b);
   }
   if (!d.photo) { $('nophoto').hidden = false; $('cap').hidden = true; $('img').hidden = true; return; }
