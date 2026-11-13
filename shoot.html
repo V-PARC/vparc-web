@@ -126,7 +126,7 @@ if (q.get('new') === '1') ret = null;
 async function ensureReturn() {
   if (ret?.returnId) return ret;
   const body = { request_id: uuid(), operator: q.get('op') || 'BEAM', vehicle_type: 'KICKBOARD', zone_id: q.get('zone') || null,
-    destination_id: q.get('dest') || null, client: { app_version: '0.4.0', device: navigator.platform, browser: navigator.userAgent.slice(0, 120) } };
+    destination_id: q.get('dest') || null, ...(/^P\d{2}-[AB]-\d$/.test(q.get('session') || '') ? { test_session: q.get('session') } : {}), client: { app_version: '0.4.0', device: navigator.platform, browser: navigator.userAgent.slice(0, 120) } };
   try {
     const r = await api.startReturn(body);
     ret = { returnId: r.return_id, startedAt: Date.now(), attempt: 0, place: q.get('place') || '시험 장소' };

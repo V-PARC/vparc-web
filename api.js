@@ -65,7 +65,7 @@ export function makeApi() {
     startReturn: (body) => send(base + '/returns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
     judge(returnId, meta, photo) {
       // FormData는 보낼 때마다 새로 만듦 (재전송에도 같은 request_id)
-      const make = () => { const fd = new FormData(); if (photo) fd.append('photo', photo, 'photo.jpg'); fd.append('meta', new Blob([JSON.stringify(meta)], { type: 'application/json' })); return fd; };
+      const make = () => { const fd = new FormData(); if (photo) fd.append('photo', photo, 'photo.jpg'); fd.append('meta', JSON.stringify(meta)); return fd; };   // meta는 파일이 아니라 문자열로 (vparc-api returns.py: meta: str = Form(...))
       let lastErr;
       return (async () => {
         for (let i = 0; i < 3; i++) {
@@ -88,9 +88,14 @@ export function toScreen(res, ctx) {
   if (res.result === 'UNSUITABLE') {
     const g = res.guide, out = { ...d, result: 'bad', code: res.reason?.code || 'C1', title: res.reason?.title, message: res.reason?.message };
     if (g?.problem_box) { const p = g.problem_box; out.box = [p.x1, p.y1, p.x2 - p.x1, p.y2 - p.y1]; }
-    if (g?.target_line?.length === 2) {          // 눈금선 두 점을 감싸는 칸으로 그림
-      const [[a, b], [c, e]] = g.target_line, x = Math.min(a, c), y = Math.min(b, e);
-      out.target = [x, y, Math.max(0.12, Math.abs(c - a)), Math.max(0.08, Math.abs(e - b))];
+    // 옮길 자리: 서버 guide.arrow.to(눈금선 위치)를 가운데로, 문제 칸과 같은 크기의 점선 칸 (vparc-api guide.py)
+    const pb = g?.problem_box, to = g?.arrow?.to || (g?.target_line ? g.target_line[0] : null);
+    if (pb && to) {
+      const w = Math.min(0.3, Math.max(0.12, pb.x2 - pb.x1)), h = Math.max(0.08, pb.y2 - pb.y1);
+      const right = to[0] >= (pb.x1 + pb.x2) / 2;   // 옮길 방향. 문제 칸과 겹치지 않게 그쪽 바깥에 붙임
+      let x = right ? Math.max(to[0] - w / 2, pb.x2 + 0.02) : Math.min(to[0] - w / 2, pb.x1 - 0.02 - w);
+      x = Math.min(1 - w, Math.max(0, x));
+      out.target = [x, Math.min(1 - h, Math.max(0, pb.y1)), w, h];
     }
     return out;
   }
