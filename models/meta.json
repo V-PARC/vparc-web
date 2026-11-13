@@ -1,0 +1,50 @@
+{
+ "outputs": [
+  "sufficient",
+  "none",
+  "cut",
+  "floor",
+  "blur",
+  "light"
+ ],
+ "input": "224x224 RGB, ImageNet mean/std",
+ "feats": [
+  "bright/255",
+  "(top-mid)/255",
+  "log1p(laplacian var)/10",
+  "box edge margin",
+  "box bottom margin",
+  "box area ratio"
+ ],
+ "feats_from": "160x120 회색조, shoot.html measure()와 같은 계산",
+ "a2": {
+  "reason_need": {
+   "none": 0.65,
+   "cut": 0.45,
+   "floor": 0.35,
+   "blur": 0.3,
+   "light": 0.65
+  },
+  "sufficient": 0.3,
+  "ready": 0.7,
+  "ready_frames": 3,
+  "hold_ms": 1500
+ },
+ "precision": "fp32 (int8 미사용, 10/13 로딩 대책 시험), opset 17 한 파일",
+ "split": "공유PM_ttsplit용_895_JS.csv (이정수 25m 장소 단위, 11/10 팀 통일)",
+ "data": "895장, 11/6 확정",
+ "test": {
+  "macro_f1": 0.863,
+  "recall": {
+   "none": 0.91,
+   "cut": 0.6,
+   "floor": 0.79,
+   "blur": 1,
+   "light": 0.96
+  },
+  "day_f1": 0.888,
+  "night_f1": 0.795,
+  "real_unjudgable_caught": "6/6"
+ },
+ "trained": "2026-11-12"
+}
