@@ -321,6 +321,8 @@ $('btnUse').addEventListener('click', async () => {
     console.warn(e);
     $('busy').hidden = true; $('btnUse').disabled = false; $('btnRetake').disabled = false;
     pill('보내지 못했어요. 연결을 확인하고 다시 눌러 주세요', 'err');
+    const why = (e && (e.status ? 'HTTP ' + e.status + ' ' : '') + (e.message || e)) || '알 수 없음';
+    $('foot').textContent = '오류: ' + String(why).slice(0, 160);   // 아이폰 원인 확인용
   }
 });
 </script>
