@@ -1,13 +1,15 @@
 // V-PARC 판정 API 호출 (정태원 API 구조 초안 5.2~5.4 기준)
 // 주소: 페이지 주소 뒤 ?api=https://…/v1 로 한 번 넣으면 이 폰에 기억. 주소가 없으면 모의 판정으로 흐름만 시험.
 const KEY = 'vparc.api';
+// vparc.app에서는 팀 판정 API를 기본으로 씀 (?api=off 로 모의 판정)
+const DEFAULT_API = /(^|\.)vparc\.app$/.test(location.hostname) ? 'https://vparc-api.ajoucobe.space/v1' : '';
 export function apiBase() {
   const q = new URLSearchParams(location.search).get('api');
   try {
     if (q === 'off') localStorage.removeItem(KEY);
     else if (q) localStorage.setItem(KEY, q.replace(/\/$/, ''));
-    return localStorage.getItem(KEY) || '';
-  } catch { return q && q !== 'off' ? q.replace(/\/$/, '') : ''; }
+    return localStorage.getItem(KEY) || (q === 'off' ? '' : DEFAULT_API);
+  } catch { return q && q !== 'off' ? q.replace(/\/$/, '') : (q === 'off' ? '' : DEFAULT_API); }
 }
 export const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'r' + Date.now() + Math.random().toString(16).slice(2));
 

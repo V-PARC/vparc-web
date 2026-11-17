@@ -1,358 +1,344 @@
 <!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>V-PARC 카메라 시험</title>
-<meta name="description" content="V-PARC 카메라 동작과 MediaPipe·ONNX 브라우저 추론 속도 측정 페이지">
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>V-PARC · 반납 구역 추천</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap">
 <style>
-  :root {
-    --bg: #f6f7f9; --card: #ffffff; --text: #16181d; --muted: #5d6470; --line: #e2e5ea;
-    --accent: #1f6feb; --accent-text: #ffffff; --ok: #1a7f37; --warn: #9a6700; --bad: #cf222e;
-    --box: #ffb000;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #0f1115; --card: #181b21; --text: #e8eaee; --muted: #9aa2ae; --line: #2a2f37;
-            --accent: #4c8dff; --accent-text: #0b0d10; --ok: #3fb950; --warn: #d29922; --bad: #f85149; }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-         padding: env(safe-area-inset-top) 16px calc(24px + env(safe-area-inset-bottom)); }
-  main { max-width: 640px; margin: 0 auto; }
-  h1 { font-size: 20px; margin: 16px 0 4px; }
-  .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin: 12px 0; }
-  .card h2 { font-size: 15px; margin: 0 0 10px; }
-  .stage { position: relative; width: 100%; aspect-ratio: 3 / 4; background: #000; border-radius: 12px; overflow: hidden; }
-  video, #overlay { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .stage .hint { position: absolute; inset: 0; display: grid; place-items: center; color: #cfd3da; text-align: center; padding: 24px; font-size: 14px; }
-  .badge { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,.6); color: #fff; font-size: 12px; padding: 3px 8px; border-radius: 999px; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; }
-  button { appearance: none; border: 0; border-radius: 10px; padding: 12px 14px; font: inherit; font-weight: 600;
-           background: var(--accent); color: var(--accent-text); flex: 1 1 140px; min-height: 44px; }
-  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
-  button:disabled { opacity: .45; }
-  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-  input[type=text] { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
-                     background: var(--bg); color: var(--text); font: inherit; }
-  .status { list-style: none; padding: 0; margin: 0; font-size: 14px; }
-  .status li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); }
-  .status li:last-child { border-bottom: 0; }
-  .status .v { font-variant-numeric: tabular-nums; text-align: right; }
-  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
-  th, td { text-align: right; padding: 6px 4px; border-bottom: 1px solid var(--line); }
-  th:first-child, td:first-child { text-align: left; }
-  th { color: var(--muted); font-weight: 600; font-size: 12px; }
-  .note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
-  .progress { height: 6px; background: var(--line); border-radius: 999px; overflow: hidden; margin-top: 10px; }
-  .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
-  details { font-size: 13px; color: var(--muted); }
-  details pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; }
+/* 레이아웃: 휴대폰 한 화면 폭(최대 430px) 앱. 화면 UI-01·02·03을 해시로 전환. 와이어프레임(10/13) 톤: 흰 바탕, 검정 주 버튼, 초록=적합, 주황=주의, 빨강=나쁜 예 */
+:root{
+  --bg:#ffffff; --ink:#0e0f11; --ink2:#5b5f66; --ink3:#8b9099; --line:#e6e8eb; --soft:#f3f4f6; --soft2:#eceef1;
+  --btn:#0e0f11; --btnfg:#ffffff; --ok:#05a357; --okbg:#e6f6ee; --warn:#b25e00; --warnbg:#fff3dc; --bad:#e11900; --badbg:#fde9e6;
+  --map:#f5f6f4; --mapgrid:#e3e5e1; --ring:#9aa0a6; --pin:#0e0f11; --pinfg:#ffffff; --dot:#b9bec5; --shade:rgba(14,15,17,.06);
+  --font:"Pretendard Variable",Pretendard,"Noto Sans KR",-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111214; --ink:#f2f3f5; --ink2:#b4b8bf; --ink3:#8a8f97; --line:#2a2c30; --soft:#1c1d20; --soft2:#26282c;
+  --btn:#f2f3f5; --btnfg:#111214; --ok:#3ecf86; --okbg:#12301f; --warn:#ffc26b; --warnbg:#3a2a10; --bad:#ff6b57; --badbg:#3a1712;
+  --map:#18191b; --mapgrid:#25272a; --ring:#6c7178; --pin:#f2f3f5; --pinfg:#111214; --dot:#4a4e55; --shade:rgba(0,0,0,.35); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111214; --ink:#f2f3f5; --ink2:#b4b8bf; --ink3:#8a8f97; --line:#2a2c30; --soft:#1c1d20; --soft2:#26282c;
+  --btn:#f2f3f5; --btnfg:#111214; --ok:#3ecf86; --okbg:#12301f; --warn:#ffc26b; --warnbg:#3a2a10; --bad:#ff6b57; --badbg:#3a1712;
+  --map:#18191b; --mapgrid:#25272a; --ring:#6c7178; --pin:#f2f3f5; --pinfg:#111214; --dot:#4a4e55; --shade:rgba(0,0,0,.35); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);letter-spacing:-.01em;-webkit-tap-highlight-color:transparent;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.app{max-width:430px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;position:relative}
+.scr{display:flex;flex-direction:column;flex:1;min-height:0;padding-block:12px 0}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--ok);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+h1{font-size:28px;font-weight:800;margin:18px 0 20px;letter-spacing:-.03em;text-wrap:balance}
+h2{font-size:15px;font-weight:700;margin:22px 0 10px}
+.cap{font-size:12.5px;color:var(--ink3);margin:8px 0 0}
+.topbar{display:flex;align-items:center;gap:8px;height:44px}
+.back{width:40px;height:40px;border-radius:20px;border:0;background:var(--soft);display:grid;place-items:center;flex-shrink:0}
+.back svg{width:20px;height:20px}
+.topbar .t{flex:1;text-align:center;font-weight:700;font-size:16px;margin-right:48px}
+/* UI-01 */
+.search{display:flex;align-items:center;gap:10px;background:var(--soft);border-radius:12px;padding:0 12px;height:50px}
+.search svg{width:18px;height:18px;color:var(--ink3);flex-shrink:0}
+.search input{flex:1;min-width:0;border:0;background:transparent;font:inherit;font-size:16px;color:var(--ink);outline:none;height:100%}
+.search .clr{border:0;background:var(--ink3);color:var(--bg);width:20px;height:20px;border-radius:10px;font-size:12px;line-height:20px;padding:0}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:9px 16px;font-size:14px;font-weight:500}
+.chip[aria-pressed="true"]{background:var(--btn);color:var(--btnfg);border-color:var(--btn)}
+.list{display:flex;flex-direction:column}
+.item{display:flex;align-items:center;gap:14px;padding:12px 2px;border:0;border-bottom:1px solid var(--line);background:none;text-align:left;width:100%}
+.item:last-child{border-bottom:0}
+.item .ic{width:36px;height:36px;border-radius:18px;background:var(--soft);display:grid;place-items:center;flex-shrink:0;color:var(--ink2)}
+.item .ic svg{width:18px;height:18px}
+.item b{display:block;font-size:15px;font-weight:600}
+.item span{display:block;font-size:12.5px;color:var(--ink3);margin-top:2px}
+.item[aria-selected="true"] .ic{background:var(--btn);color:var(--btnfg)}
+.grp{font-size:12px;color:var(--ink3);font-weight:600;letter-spacing:.02em;margin:14px 0 2px}
+.foot{position:sticky;bottom:0;padding-block:12px calc(14px + env(safe-area-inset-bottom,0px));background:linear-gradient(to top,var(--bg) 78%,transparent);margin-top:auto;display:flex;gap:8px}
+.btn{flex:1;height:52px;border-radius:12px;border:0;background:var(--btn);color:var(--btnfg);font-weight:700;font-size:16px}
+.btn.sub{flex:0 0 38%;background:var(--soft2);color:var(--ink)}
+.btn:disabled{opacity:.35;cursor:default}
+.note{font-size:12px;color:var(--ink3);line-height:1.6;margin:18px 0 6px}
+/* UI-02 */
+.mapwrap{position:relative;margin:4px -16px 0;height:300px;background:var(--map);overflow:hidden;flex-shrink:0}
+.mapwrap svg{width:100%;height:100%;display:block;touch-action:manipulation}
+.mapwrap .back{position:absolute;left:max(16px,env(safe-area-inset-left,0px));top:12px;background:var(--bg);box-shadow:0 1px 6px var(--shade)}
+.maphint{position:absolute;right:12px;top:16px;font-size:11.5px;color:var(--ink2);background:var(--bg);padding:5px 9px;border-radius:999px;box-shadow:0 1px 6px var(--shade)}
+.sheet{background:var(--bg);border-radius:18px 18px 0 0;margin:-18px -16px 0;padding:10px 16px 0;position:relative;flex:1;display:flex;flex-direction:column}
+.sheet::before{content:"";display:block;width:36px;height:4px;border-radius:2px;background:var(--line);margin:0 auto 12px}
+.sheet h3{font-size:19px;font-weight:800;margin:0}
+.sheet .sub{font-size:13px;color:var(--ink3);margin:3px 0 14px}
+.card{border:2px solid var(--ink);border-radius:14px;overflow:hidden;background:var(--bg);text-align:left;padding:0;width:100%}
+.card .ph{position:relative;aspect-ratio:16/9;background:var(--soft);max-width:100%}
+.card .ph img{width:100%;height:100%;object-fit:cover;display:block}
+.tag{position:absolute;left:10px;top:10px;font-size:11px;font-weight:700;color:#fff;background:rgba(0,0,0,.62);padding:4px 8px;border-radius:6px}
+.card .bd{padding:12px 14px 14px}
+.ttl{display:flex;gap:8px;align-items:flex-start;font-weight:700;font-size:15.5px;line-height:1.35}
+.no{flex-shrink:0;width:22px;height:22px;border-radius:11px;background:var(--pin);color:var(--pinfg);font-size:12.5px;display:grid;place-items:center;margin-top:-1px}
+.meta{font-size:13px;color:var(--ink2);margin:5px 0 0 30px}
+.pills{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0 30px}
+.pill{font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:6px;background:var(--soft2);color:var(--ink2)}
+.pill.w{background:var(--warnbg);color:var(--warn)}
+.pill.g{background:var(--okbg);color:var(--ok)}
+.row{display:flex;gap:12px;align-items:center;padding:12px 2px;border:0;border-bottom:1px solid var(--line);background:none;width:100%;text-align:left}
+.row .ic{width:40px;height:40px;border-radius:10px;background:var(--soft);display:grid;place-items:center;flex-shrink:0;overflow:hidden}
+.row .ic img{width:100%;height:100%;object-fit:cover}
+.row b{display:block;font-size:14.5px;font-weight:600}
+.row span{display:block;font-size:12.5px;color:var(--ink3);margin-top:2px}
+.cards{display:flex;flex-direction:column;gap:2px}
+/* 구역 없음 */
+.none{padding:6px 2px}
+.none .where{font-size:12.5px;color:var(--ink3)}
+.none .big{display:flex;gap:12px;align-items:center;margin:12px 0 16px}
+.none .big .ic{width:40px;height:40px;border-radius:20px;background:var(--soft);display:grid;place-items:center;flex-shrink:0}
+.none .big b{font-size:21px;font-weight:800;line-height:1.3}
+.chk{display:flex;gap:10px;align-items:center;font-size:15px;font-weight:500;margin:10px 0}
+.chk i{width:22px;height:22px;border-radius:11px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-style:normal;font-size:13px;flex-shrink:0}
+.box{background:var(--soft);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--ink2);margin-top:12px;line-height:1.55}
+.box b{color:var(--ink)}
+/* UI-03 */
+.zname{font-size:17px;font-weight:800;margin:14px 0 2px;line-height:1.35;text-wrap:balance}
+.zname small{font-size:12.5px;color:var(--ink3);font-weight:500;margin-left:6px}
+.hero{border-radius:12px;overflow:hidden;background:var(--soft);aspect-ratio:4/3;margin-top:10px;max-width:100%}
+.hero img{width:100%;height:100%;object-fit:cover;display:block}
+.facts{margin-top:6px}
+.fact{display:grid;grid-template-columns:64px 1fr;gap:10px;padding:11px 0;border-bottom:1px solid var(--line);font-size:14px;line-height:1.5}
+.fact dt{color:var(--ink3);font-size:13px}
+.fact dd{margin:0;font-weight:600;min-width:0}
+.fact dd.w{color:var(--warn)}
+.badlbl{display:inline-block;font-size:12px;font-weight:700;color:#fff;background:var(--bad);padding:4px 8px;border-radius:6px;margin:20px 0 10px}
+.bads{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.bad .im{position:relative;aspect-ratio:3/4;border-radius:8px;overflow:hidden;background:var(--soft);max-width:100%}
+.bad .im img{width:100%;height:100%;object-fit:cover;display:block}
+.bad .x{position:absolute;left:6px;top:6px;width:20px;height:20px;border-radius:10px;background:var(--bad);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:700}
+.bad b{display:block;font-size:13px;font-weight:700;margin-top:6px}
+.bad span{display:block;font-size:11.5px;color:var(--ink3);margin-top:1px;line-height:1.4}
+.rec{font-size:12px;color:var(--ink3);margin:16px 0 4px;line-height:1.6}
+.toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--btn);color:var(--btnfg);font-size:14px;font-weight:600;padding:11px 16px;border-radius:999px;max-width:calc(100% - 48px);z-index:20;box-shadow:0 4px 16px var(--shade)}
+@media (prefers-reduced-motion:no-preference){.scr{animation:in .18s ease-out}@keyframes in{from{opacity:.4;transform:translateY(6px)}to{opacity:1;transform:none}}}
 </style>
-</head>
-<body>
-<main>
-  <h1>V-PARC 카메라 시험</h1>
-  <p class="sub">카메라가 켜지는지, 폰 브라우저에서 모델이 얼마나 빨리 도는지 잽니다. 영상은 이 폰 밖으로 전송되지 않습니다.</p>
-  <p class="sub"><a href="shoot.html" style="color:var(--accent);font-weight:600">촬영 화면 시험하기 →</a></p>
-  <p class="sub"><a href="load.html" style="color:var(--accent);font-weight:600">모델 로딩 시험하기 →</a></p>
+</head><body>
 
-  <div class="stage" id="stage">
-    <video id="video" playsinline muted autoplay></video>
-    <canvas id="overlay"></canvas>
-    <div class="hint" id="hint">아래 ‘카메라 켜기’를 누르세요.<br>권한을 물으면 ‘허용’을 눌러 주세요.</div>
-    <div class="badge" id="fps" hidden>— fps</div>
-  </div>
+<div class="app">
+  <!-- UI-01 목적지·운영사 선택 -->
+  <section class="scr" id="s1">
+    <h1>어디로 가세요?</h1>
+    <label class="search" for="q">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="목적지 검색 (예: 광교중앙역)" autocomplete="off">
+      <button class="clr" id="qclr" type="button" aria-label="지우기" hidden>✕</button>
+    </label>
+    <h2>이용할 기체</h2>
+    <div class="chips" id="ops" role="group" aria-label="운영사"></div>
+    <p class="cap">운영사마다 반납할 수 있는 구역이 달라요</p>
+    <div id="dlist"></div>
+    <p class="note" id="srcnote"></p>
+    <div class="foot"><button class="btn" id="go1" type="button" disabled>확인 구역 보기</button></div>
+  </section>
 
-  <div class="card">
-    <div class="row">
-      <button id="btnStart">카메라 켜기</button>
-      <button id="btnBench" class="secondary" disabled>속도 측정 (10회)</button>
+  <!-- UI-02 확인 구역 추천 / 구역 없음 -->
+  <section class="scr" id="s2" hidden>
+    <div class="mapwrap">
+      <svg id="map" role="img" aria-label="목적지 주변 지도"></svg>
+      <button class="back" type="button" data-back aria-label="뒤로"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <span class="maphint">지도를 누르면 목적지가 옮겨져요</span>
     </div>
-    <div class="progress" id="prog" hidden><div></div></div>
-  </div>
+    <div class="sheet" id="sheet"></div>
+  </section>
 
-  <div class="card">
-    <h2>상태</h2>
-    <ul class="status">
-      <li><span>카메라</span><span class="v" id="sCam">꺼짐</span></li>
-      <li><span>MediaPipe 검출 모델</span><span class="v" id="sMp">대기</span></li>
-      <li><span>ONNX 분류 모델</span><span class="v" id="sOrt">대기</span></li>
-      <li><span>실시간 검출</span><span class="v" id="sLive">—</span></li>
-    </ul>
-  </div>
-
-  <div class="card">
-    <h2>기기 정보</h2>
-    <label for="model">기종 (직접 입력, 예: iPhone 13 mini)</label>
-    <input type="text" id="model" placeholder="iPhone 기종" autocomplete="off">
-    <ul class="status" style="margin-top:8px">
-      <li><span>OS</span><span class="v" id="dOs">—</span></li>
-      <li><span>브라우저</span><span class="v" id="dBrowser">—</span></li>
-      <li><span>CPU 스레드 / 화면</span><span class="v" id="dHw">—</span></li>
-    </ul>
-  </div>
-
-  <div class="card">
-    <h2>측정 결과 (ms)</h2>
-    <table>
-      <thead><tr><th>모델</th><th>로딩</th><th>첫 추론</th><th>평균</th><th>최소</th><th>최대</th></tr></thead>
-      <tbody>
-        <tr><td>MediaPipe</td><td id="rMpLoad">—</td><td id="rMpFirst">—</td><td id="rMpAvg">—</td><td id="rMpMin">—</td><td id="rMpMax">—</td></tr>
-        <tr><td>ONNX</td><td id="rOrtLoad">—</td><td id="rOrtFirst">—</td><td id="rOrtAvg">—</td><td id="rOrtMin">—</td><td id="rOrtMax">—</td></tr>
-      </tbody>
-    </table>
-    <p class="note">로딩 = 모델 다운로드와 초기화 시간. 첫 추론 = 처음 한 번(준비 포함). 평균·최소·최대 = 그다음 10회. 같은 화면 한 장으로 잽니다.</p>
-    <div class="row" style="margin-top:10px">
-      <button id="btnCopy" class="secondary" disabled>결과 복사 (시트에 붙여넣기용)</button>
+  <!-- UI-03 구역 상세·예시 -->
+  <section class="scr" id="s3" hidden>
+    <div class="topbar">
+      <button class="back" type="button" data-back aria-label="뒤로"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <div class="t">구역 자세히</div>
     </div>
-    <p class="note" id="copyMsg"></p>
-  </div>
+    <div id="detail"></div>
+    <div class="foot"><button class="btn" id="go3" type="button">이 구역으로 출발</button></div>
+  </section>
+  <div class="toast" id="toast" role="status" hidden></div>
+</div>
 
-  <details>
-    <summary>기술 정보</summary>
-    <pre id="log"></pre>
-  </details>
-</main>
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const OPS=[{k:'빔',v:'킥보드'},{k:'스윙',v:'킥보드'},{k:'지쿠',v:'킥보드'},{k:'일레클',v:'자전거'},{k:'카카오T바이크',v:'자전거'}];
+// 목적지: 팀이 현장 조사 때 위치 메모를 남긴 장소의 사진 GPS 평균 좌표 (기록표 10/27)
+const DEST=[
+ {n:'아주대학교 정문 삼거리',a:'아주대·우만동',lat:37.27941,lon:127.04408},
+ {n:'아주대학교병원 본관',a:'아주대·우만동',lat:37.27878,lon:127.04588},
+ {n:'아주대요양병원',a:'아주대·우만동',lat:37.27742,lon:127.04871},
+ {n:'아주대 국제학사 (혜령공원)',a:'아주대·우만동',lat:37.28576,lon:127.04402},
+ {n:'송방산공원 (아주로)',a:'아주대·우만동',lat:37.27729,lon:127.0435},
+ {n:'광교중앙역 출입구',a:'광교중앙역·이의동',lat:37.28855,lon:127.05204},
+ {n:'광교중앙역 버스환승센터',a:'광교중앙역·이의동',lat:37.28925,lon:127.05118},
+ {n:'경기도청 (센트럴타운로)',a:'광교중앙역·이의동',lat:37.28941,lon:127.056},
+ {n:'교보문고 광교점',a:'광교중앙역·이의동',lat:37.28681,lon:127.0553},
+ {n:'롯데몰 광교 상가 거리',a:'광교중앙역·이의동',lat:37.28764,lon:127.05605},
+ {n:'아브뉴프랑 광교',a:'광교중앙역·이의동',lat:37.29049,lon:127.05197},
+ {n:'에듀타운삼거리',a:'광교중앙역·이의동',lat:37.2892,lon:127.04673},
+ {n:'광교중앙로49번길 상가',a:'원천동·하동',lat:37.27897,lon:127.05029},
+ {n:'가람마을사거리',a:'원천동·하동',lat:37.27585,lon:127.05113},
+ {n:'맘스터치 광교중앙점',a:'원천동·하동',lat:37.28521,lon:127.05185},
+ {n:'광교호수공원 원천호수 서측',a:'원천동·하동',lat:37.28442,lon:127.0594},
+ {n:'광교호수공원 가족캠핑장',a:'원천동·하동',lat:37.27551,lon:127.0642},
+ {n:'흥덕중앙로 교차로',a:'원천동·하동',lat:37.2764,lon:127.0668},
+ {n:'광교호수중학교',a:'원천동·하동',lat:37.27276,lon:127.0609}];
+const CAUTION={A1:'연석 밖 차도·갓길에는 세우지 마세요',A2:'붉은 자전거도로 위는 피해 주세요',A3:'횡단보도 쪽 모서리 3m는 비워 주세요',A4:'소화전에서 5m 떨어뜨려 주세요',A6:'정류장·역 출구 5m 안은 피해 주세요',A7:'출입구·계단 앞 1m는 비워 주세요',A8:'바닥 주차금지 표시 위는 피해 주세요',B1:'점자블록 위에 바퀴가 올라가지 않게 해 주세요',B2:'점자블록에서 한 블록(30cm) 이상 떨어뜨려 주세요',C1:'보도 가운데 말고 건물·화단 쪽 가장자리에 붙여 주세요',C2:'지나갈 폭 1.5m는 남겨 주세요',C4:'좁은 길은 담장 쪽에 바짝 붙여 주세요',D1:'스탠드를 내려 넘어지지 않게 세워 주세요'};
+const BADTXT={B1:['점자블록 위','바퀴가 블록에 올라감'],B2:['점자블록 바로 옆','한 블록 안쪽'],C1:['보도 한가운데','가장자리에서 떨어져 있어요'],A1:['차도 바로 옆','연석 밖 갓길'],A3:['횡단보도 3m 안','건너는 사람을 막아요'],D1:['넘어진 기체','스탠드 없이 기울어짐'],C2:['통로를 좁힘','남은 폭 1.5m 미만'],A2:['자전거도로 위','붉은 포장 위'],A4:['소화전 옆','5m 안'],A7:['출입구 앞','1m 안']};
+const SPEED=1.2, DETOUR=1.25, LIMIT=120; // 도보 1.2m/s, 직선거리×1.25 보정 (실측 보정 전 가정값)
+let DATA=null, st={op:'빔',dest:null,cands:[],zone:null};
+const store={get(k,d){try{const v=localStorage.getItem('vparc.'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('vparc.'+k,JSON.stringify(v))}catch(e){}}};
+st.op=store.get('op','빔');
 
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
-<script type="module">
-import { FilesetResolver, ObjectDetector } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+function dist(a,b){const R=6371000,r=Math.PI/180,dp=(b.lat-a.lat)*r,dl=(b.lon-a.lon)*r;const h=Math.sin(dp/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dl/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+const walk=m=>m*DETOUR/SPEED;
+const mins=s=>Math.max(1,Math.ceil(s/60));
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(t){const e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>e.hidden=true,2600)}
 
-const MP_WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
-const MP_MODEL = "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite";
-// 판단 가능성 모델 자리를 대신하는 공개 분류 모델(224x224 입력). 앞의 주소가 실패하면 다음 주소를 시도합니다.
-const ORT_MODELS = [
-  { name: "MobileNetV2", url: "https://huggingface.co/onnx-community/mobilenet_v2_1.0_224/resolve/main/onnx/model.onnx" },
-  { name: "MobileNetV2 (zoo)", url: "https://huggingface.co/onnxmodelzoo/mobilenetv2-12/resolve/main/mobilenetv2-12.onnx" },
-  { name: "ResNet-18 int8", url: "https://huggingface.co/Xenova/resnet-18/resolve/main/onnx/model_quantized.onnx" },
-];
-const WATCH = new Set(["bicycle", "motorcycle", "skateboard", "person"]);
-const RUNS = 10;
-
-const $ = (id) => document.getElementById(id);
-const video = $("video"), overlay = $("overlay"), octx = overlay.getContext("2d");
-const logEl = $("log");
-const log = (m) => { logEl.textContent += `[${new Date().toLocaleTimeString()}] ${m}\n`; };
-const fmt = (x) => (x == null || Number.isNaN(x)) ? "—" : Math.round(x).toString();
-const setStatus = (id, text, cls) => { const el = $(id); el.textContent = text; el.className = "v " + (cls || ""); };
-
-const state = { detector: null, mpDelegate: "", mpLoad: null, ort: null, ortName: "", ortLoad: null, ortInput: "",
-                live: false, results: null, lastTs: 0 };
-
-// ---- 기기 정보 ----
-function deviceInfo() {
-  const ua = navigator.userAgent;
-  let os = "알 수 없음";
-  const ios = ua.match(/OS (\d+)_(\d+)(?:_(\d+))? like Mac OS X/);
-  const android = ua.match(/Android ([\d.]+)/);
-  if (ios) os = `iOS ${ios[1]}.${ios[2]}${ios[3] ? "." + ios[3] : ""}`;
-  else if (android) os = `Android ${android[1]}`;
-  else if (/Mac OS X/.test(ua)) os = "macOS";
-  else if (/Windows/.test(ua)) os = "Windows";
-  let browser = "알 수 없음";
-  if (/CriOS\/([\d.]+)/.test(ua)) browser = "Chrome(iOS) " + RegExp.$1;
-  else if (/FxiOS\/([\d.]+)/.test(ua)) browser = "Firefox(iOS) " + RegExp.$1;
-  else if (/Edg\/([\d.]+)/.test(ua)) browser = "Edge " + RegExp.$1;
-  else if (/Chrome\/([\d.]+)/.test(ua)) browser = "Chrome " + RegExp.$1;
-  else if (/Version\/([\d.]+).*Safari/.test(ua)) browser = "Safari " + RegExp.$1;
-  const hw = `${navigator.hardwareConcurrency || "?"} / ${screen.width}×${screen.height} @${window.devicePixelRatio}x`;
-  return { os, browser, hw, ua };
+function placeOf(z){
+  if(z.hint) return z.hint.split(',')[0].trim();
+  let best=null,bd=1e9;for(const d of DEST){const m=dist(z,d);if(m<bd){bd=m;best=d}}
+  return bd<250?best.n.replace(/ \(.*\)/,'')+' 근처':'조사 구역';
 }
-const dev = deviceInfo();
-$("dOs").textContent = dev.os; $("dBrowser").textContent = dev.browser; $("dHw").textContent = dev.hw;
-log("UA: " + dev.ua);
-try { const saved = localStorage.getItem("vparc-model"); if (saved) $("model").value = saved; } catch (e) {}
-$("model").addEventListener("change", () => { try { localStorage.setItem("vparc-model", $("model").value); } catch (e) {} });
+function sideOf(z){const w=(z.why[0]||'').split(',')[0].trim();return w||'가장자리에 나란히'}
+function caution(z){const k=(z.near||[]).find(c=>CAUTION[c]);return k?CAUTION[k]:'건물·화단 쪽 가장자리에 나란히 세워 주세요'}
+function tier(z){return (z.pz||z.n>=2)?0:1}
 
-// ---- 카메라 ----
-async function startCamera() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    throw new Error("이 브라우저는 카메라를 지원하지 않습니다(https 주소인지 확인).");
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 960 } },
-  });
-  video.srcObject = stream;
-  await video.play();
-  await new Promise((r) => video.readyState >= 2 ? r() : video.addEventListener("loadeddata", r, { once: true }));
-  const s = stream.getVideoTracks()[0].getSettings();
-  setStatus("sCam", `켜짐 ${video.videoWidth}×${video.videoHeight}${s.facingMode ? " (" + (s.facingMode === "environment" ? "후면" : "전면") + ")" : ""}`, "ok");
-  $("hint").hidden = true;
-  log(`camera ${video.videoWidth}x${video.videoHeight} settings=${JSON.stringify(s)}`);
+/* ---------- UI-01 ---------- */
+function renderOps(){
+  $('#ops').innerHTML=OPS.map(o=>`<button class="chip" type="button" aria-pressed="${o.k===st.op}" data-op="${esc(o.k)}">${esc(o.k)}</button>`).join('');
 }
-
-// ---- MediaPipe ----
-async function loadMediaPipe() {
-  setStatus("sMp", "불러오는 중…");
-  const t0 = performance.now();
-  const fileset = await FilesetResolver.forVisionTasks(MP_WASM);
-  const make = (delegate) => ObjectDetector.createFromOptions(fileset, {
-    baseOptions: { modelAssetPath: MP_MODEL, delegate },
-    runningMode: "VIDEO", scoreThreshold: 0.35, maxResults: 10,
-  });
-  let det, delegate = "GPU";
-  try { det = await make("GPU"); }
-  catch (e) { log("MediaPipe GPU 실패 → CPU: " + e.message); delegate = "CPU"; det = await make("CPU"); }
-  state.detector = det; state.mpDelegate = delegate; state.mpLoad = performance.now() - t0;
-  setStatus("sMp", `준비됨 · ${delegate} · ${fmt(state.mpLoad)}ms`, "ok");
-  log(`MediaPipe ready delegate=${delegate} load=${state.mpLoad.toFixed(0)}ms`);
-}
-
-// ---- ONNX Runtime ----
-async function loadOrt() {
-  setStatus("sOrt", "불러오는 중…");
-  const ort = window.ort;
-  if (!ort) throw new Error("onnxruntime-web 스크립트를 불러오지 못했습니다.");
-  ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/";
-  ort.env.wasm.numThreads = (self.crossOriginIsolated && navigator.hardwareConcurrency > 1) ? Math.min(4, navigator.hardwareConcurrency) : 1;
-  let lastErr;
-  for (const m of ORT_MODELS) {
-    const t0 = performance.now();
-    try {
-      const res = await fetch(m.url, { mode: "cors" });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const buf = await res.arrayBuffer();
-      const sess = await ort.InferenceSession.create(buf, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
-      state.ort = sess; state.ortName = m.name; state.ortInput = sess.inputNames[0];
-      state.ortLoad = performance.now() - t0;
-      setStatus("sOrt", `준비됨 · ${m.name} · wasm ${ort.env.wasm.numThreads}스레드 · ${fmt(state.ortLoad)}ms`, "ok");
-      log(`ORT ready model=${m.name} (${(buf.byteLength / 1e6).toFixed(1)}MB) input=${state.ortInput} load=${state.ortLoad.toFixed(0)}ms`);
-      return;
-    } catch (e) { lastErr = e; log(`ORT 모델 실패 ${m.url}: ${e.message}`); }
-  }
-  throw lastErr || new Error("ONNX 모델을 불러오지 못했습니다.");
-}
-
-// 프레임을 224x224 NCHW float32(ImageNet 정규화)로 바꿉니다.
-const prep = document.createElement("canvas"); prep.width = prep.height = 224;
-const pctx = prep.getContext("2d", { willReadFrequently: true });
-function toTensor(src) {
-  const sw = src.videoWidth || src.width, sh = src.videoHeight || src.height, side = Math.min(sw, sh);
-  pctx.drawImage(src, (sw - side) / 2, (sh - side) / 2, side, side, 0, 0, 224, 224);
-  const { data } = pctx.getImageData(0, 0, 224, 224);
-  const n = 224 * 224, out = new Float32Array(3 * n);
-  const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
-  for (let i = 0; i < n; i++) {
-    out[i] = (data[i * 4] / 255 - mean[0]) / std[0];
-    out[n + i] = (data[i * 4 + 1] / 255 - mean[1]) / std[1];
-    out[2 * n + i] = (data[i * 4 + 2] / 255 - mean[2]) / std[2];
-  }
-  return new window.ort.Tensor("float32", out, [1, 3, 224, 224]);
-}
-
-// ---- 실시간 검출 ----
-let frames = 0, fpsT = performance.now();
-function nextTs() { const t = performance.now(); state.lastTs = Math.max(t, state.lastTs + 1); return state.lastTs; }
-function draw(dets) {
-  const w = overlay.clientWidth, h = overlay.clientHeight, dpr = window.devicePixelRatio || 1;
-  if (overlay.width !== w * dpr) { overlay.width = w * dpr; overlay.height = h * dpr; }
-  octx.setTransform(dpr, 0, 0, dpr, 0, 0); octx.clearRect(0, 0, w, h);
-  const vw = video.videoWidth, vh = video.videoHeight, sc = Math.max(w / vw, h / vh);
-  const ox = (w - vw * sc) / 2, oy = (h - vh * sc) / 2;
-  octx.lineWidth = 3; octx.font = "600 13px -apple-system, sans-serif";
-  for (const d of dets) {
-    const c = d.categories[0]; if (!c || !WATCH.has(c.categoryName)) continue;
-    const b = d.boundingBox, x = ox + b.originX * sc, y = oy + b.originY * sc;
-    octx.strokeStyle = "#ffb000"; octx.strokeRect(x, y, b.width * sc, b.height * sc);
-    const label = `${c.categoryName} ${Math.round(c.score * 100)}%`;
-    octx.fillStyle = "#ffb000"; octx.fillRect(x, y - 18, octx.measureText(label).width + 8, 18);
-    octx.fillStyle = "#111"; octx.fillText(label, x + 4, y - 5);
-  }
-}
-function loop() {
-  if (!state.live) return;
-  if (state.detector && video.readyState >= 2) {
-    const r = state.detector.detectForVideo(video, nextTs());
-    draw(r.detections);
-    frames++;
-    const now = performance.now();
-    if (now - fpsT > 1000) {
-      const fps = frames * 1000 / (now - fpsT); frames = 0; fpsT = now;
-      $("fps").textContent = fps.toFixed(1) + " fps"; $("fps").hidden = false;
-      const seen = r.detections.map((d) => d.categories[0]?.categoryName).filter((n) => WATCH.has(n));
-      setStatus("sLive", seen.length ? "보임: " + [...new Set(seen)].join(", ") : "대상 없음");
+function renderDest(){
+  const q=$('#q').value.trim(); $('#qclr').hidden=!q;
+  const recent=store.get('recent',[]);
+  let html='';
+  const item=(d,ic)=>`<button class="item" type="button" role="option" aria-selected="${st.dest&&st.dest.n===d.n}" data-d="${esc(d.n)}"><span class="ic">${ic}</span><span><b>${esc(d.n)}</b><span>${esc(d.a)}</span></span></button>`;
+  const clock='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+  const pin='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+  if(q){
+    const hit=DEST.filter(d=>(d.n+d.a).replace(/\s/g,'').includes(q.replace(/\s/g,'')));
+    html=hit.length?`<div class="list" role="listbox">${hit.map(d=>item(d,pin)).join('')}</div>`:`<p class="note">‘${esc(q)}’에 맞는 장소가 없어요. 조사 구역 안 장소만 검색돼요.</p>`;
+  }else{
+    const rs=recent.map(n=>DEST.find(d=>d.n===n)).filter(Boolean);
+    if(rs.length) html+=`<h2>최근 목적지</h2><div class="list" role="listbox">${rs.map(d=>item(d,clock)).join('')}</div>`;
+    html+=`<h2>조사 구역 장소</h2>`;
+    for(const a of ['아주대·우만동','광교중앙역·이의동','원천동·하동']){
+      html+=`<div class="grp">${a}</div><div class="list" role="listbox">${DEST.filter(d=>d.a===a&&!rs.includes(d)).map(d=>item(d,pin)).join('')}</div>`;
     }
   }
-  requestAnimationFrame(loop);
+  $('#dlist').innerHTML=html;
+  $('#go1').disabled=!st.dest;
 }
+$('#ops').addEventListener('click',e=>{const b=e.target.closest('[data-op]');if(!b)return;st.op=b.dataset.op;store.set('op',st.op);renderOps()});
+$('#dlist').addEventListener('click',e=>{const b=e.target.closest('[data-d]');if(!b)return;st.dest=DEST.find(d=>d.n===b.dataset.d);$('#q').value=st.dest.n;renderDest()});
+$('#q').addEventListener('input',()=>{if(st.dest&&$('#q').value!==st.dest.n)st.dest=null;renderDest()});
+$('#qclr').addEventListener('click',()=>{$('#q').value='';st.dest=null;renderDest();$('#q').focus()});
+$('#go1').addEventListener('click',()=>{if(!st.dest)return;const r=store.get('recent',[]).filter(n=>n!==st.dest.n);r.unshift(st.dest.n);store.set('recent',r.slice(0,3));location.hash='zones'});
 
-// ---- 속도 측정 ----
-const stats = (a) => ({ avg: a.reduce((s, x) => s + x, 0) / a.length, min: Math.min(...a), max: Math.max(...a) });
-const tick = () => new Promise((r) => setTimeout(r, 0));
-async function benchmark() {
-  state.live = false;
-  $("btnBench").disabled = true; $("btnCopy").disabled = true;
-  const prog = $("prog"), bar = prog.firstElementChild; prog.hidden = false;
-  const total = (RUNS + 1) * 2; let done = 0; const step = () => { bar.style.width = (++done / total * 100) + "%"; };
-  const frame = document.createElement("canvas");
-  frame.width = video.videoWidth; frame.height = video.videoHeight;
-  frame.getContext("2d").drawImage(video, 0, 0);
-  const res = {};
-  try {
-    if (state.detector) {
-      const t = [];
-      for (let i = 0; i <= RUNS; i++) { const t0 = performance.now(); state.detector.detectForVideo(frame, nextTs()); t.push(performance.now() - t0); step(); await tick(); }
-      res.mp = { first: t[0], ...stats(t.slice(1)) };
-    }
-    if (state.ort) {
-      const t = [];
-      for (let i = 0; i <= RUNS; i++) {
-        const t0 = performance.now();
-        const out = await state.ort.run({ [state.ortInput]: toTensor(frame) });
-        t.push(performance.now() - t0);
-        if (i === 0) log("ORT output dims " + JSON.stringify(Object.values(out)[0].dims));
-        step(); await tick();
-      }
-      res.ort = { first: t[0], ...stats(t.slice(1)) };
-    }
-  } catch (e) { log("측정 오류: " + e.message); alert("측정 중 오류: " + e.message); }
-  state.results = res;
-  const put = (k, r, load) => { $(`r${k}Load`).textContent = fmt(load); if (!r) return;
-    $(`r${k}First`).textContent = fmt(r.first); $(`r${k}Avg`).textContent = fmt(r.avg); $(`r${k}Min`).textContent = fmt(r.min); $(`r${k}Max`).textContent = fmt(r.max); };
-  put("Mp", res.mp, state.mpLoad); put("Ort", res.ort, state.ortLoad);
-  log("benchmark " + JSON.stringify(res));
-  prog.hidden = true; bar.style.width = "0";
-  $("btnBench").disabled = false; $("btnCopy").disabled = false;
-  state.live = true; requestAnimationFrame(loop);
+/* ---------- UI-02 ---------- */
+function recommend(){
+  const d=st.dest;
+  const all=DATA.zones.map(z=>({z,m:dist(d,z)})).map(o=>({...o,s:walk(o.m)}));
+  st.cands=all.filter(o=>o.s<LIMIT).sort((a,b)=>tier(a.z)-tier(b.z)||a.s-b.s).slice(0,3);
+  st.nearest=all.sort((a,b)=>a.s-b.s)[0];
 }
-
-// 시트에 바로 붙여 넣을 수 있게 탭으로 구분한 한 줄을 만듭니다.
-function resultLine() {
-  const r = state.results || {}, mp = r.mp || {}, o = r.ort || {};
-  const d = new Date(), date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  return [date, $("model").value || "(기종 미입력)", dev.os, dev.browser,
-    fmt(state.mpLoad), fmt(mp.first), fmt(mp.avg), fmt(mp.min), fmt(mp.max), state.mpDelegate,
-    fmt(state.ortLoad), fmt(o.first), fmt(o.avg), fmt(o.min), fmt(o.max), state.ortName,
-    `${video.videoWidth}x${video.videoHeight}`].join("\t");
+function drawMap(){
+  const svg=$('#map'), d=st.dest, W=svg.clientWidth||400, H=svg.clientHeight||300;
+  const R=LIMIT*SPEED/DETOUR; // 2분 반경(직선)
+  const span=Math.max(R*2.9, 300), k=Math.min(W,H)/span; // px per m
+  const cx=W/2, cy=H*0.46, mlat=111320, mlon=111320*Math.cos(d.lat*Math.PI/180);
+  const P=z=>[cx+(z.lon-d.lon)*mlon*k, cy-(z.lat-d.lat)*mlat*k];
+  let g='';
+  const step=50*k; for(let x=cx%step;x<W;x+=step)g+=`<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="var(--mapgrid)"/>`;
+  for(let y=cy%step;y<H;y+=step)g+=`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="var(--mapgrid)"/>`;
+  g+=`<circle cx="${cx}" cy="${cy}" r="${R*k}" fill="none" stroke="var(--ring)" stroke-width="1.3" stroke-dasharray="4 4"/>`;
+  for(const z of DATA.zones){if(st.cands.some(o=>o.z===z))continue;const [x,y]=P(z);if(x<-10||x>W+10||y<-10||y>H+10)continue;g+=`<circle cx="${x}" cy="${y}" r="4.5" fill="var(--dot)"/>`}
+  for(const o of DEST){if(o===d)continue;const [x,y]=P(o);if(x<0||x>W||y<0||y>H)continue;g+=`<text x="${x}" y="${y}" font-size="10.5" fill="var(--ink3)" text-anchor="middle">${esc(o.n.replace(/ \(.*\)/,''))}</text>`}
+  st.cands.forEach((o,i)=>{const [x,y]=P(o.z);g+=`<g data-z="${o.z.id}" style="cursor:pointer"><circle cx="${x}" cy="${y}" r="13" fill="var(--pin)" stroke="var(--bg)" stroke-width="2"/><text x="${x}" y="${y+4.5}" font-size="12.5" font-weight="700" fill="var(--pinfg)" text-anchor="middle">${i+1}</text></g>`});
+  g+=`<g><rect x="${cx-26}" y="${cy-34}" width="52" height="20" rx="5" fill="var(--pin)"/><text x="${cx}" y="${cy-20}" font-size="11" font-weight="700" fill="var(--pinfg)" text-anchor="middle">목적지</text><line x1="${cx}" y1="${cy-14}" x2="${cx}" y2="${cy-4}" stroke="var(--pin)" stroke-width="2"/><rect x="${cx-4}" y="${cy-4}" width="8" height="8" fill="var(--pin)"/></g>`;
+  const sb=50*k; g+=`<g transform="translate(${W-sb-16},${H-46})"><line x1="0" y1="10" x2="${sb}" y2="10" stroke="var(--ink2)" stroke-width="2"/><line x1="0" y1="5" x2="0" y2="10" stroke="var(--ink2)" stroke-width="2"/><line x1="${sb}" y1="5" x2="${sb}" y2="10" stroke="var(--ink2)" stroke-width="2"/><text x="${sb/2}" y="2" font-size="10.5" fill="var(--ink2)" text-anchor="middle">50 m</text></g>`;
+  g+=`<text x="16" y="${H-28}" font-size="10.5" fill="var(--ink3)">점선 = 걸어서 2분 · 회색 점 = 다른 확인 구역</text>`;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML=g;
+  svg.onclick=e=>{const t=e.target.closest('[data-z]');if(t){location.hash='zone-'+t.dataset.z.toLowerCase();return}
+    const b=svg.getBoundingClientRect(),x=(e.clientX-b.left)*W/b.width,y=(e.clientY-b.top)*H/b.height;
+    st.dest={n:'지도에서 고른 곳',a:d.a,lat:d.lat-(y-cy)/(mlat*k),lon:d.lon+(x-cx)/(mlon*k),pick:true};renderZones()};
 }
-async function copyResult() {
-  const line = resultLine();
-  try { await navigator.clipboard.writeText(line); $("copyMsg").textContent = "복사했어요. 시트의 한 행에 붙여 넣으세요."; }
-  catch (e) {
-    const ta = document.createElement("textarea"); ta.value = line; document.body.appendChild(ta); ta.select();
-    try { document.execCommand("copy"); $("copyMsg").textContent = "복사했어요. 시트의 한 행에 붙여 넣으세요."; }
-    catch (e2) { $("copyMsg").textContent = "자동 복사가 안 됩니다. 아래 줄을 길게 눌러 복사하세요: " + line; }
-    ta.remove();
+function renderZones(){
+  if(!st.dest){location.hash='';return}
+  recommend(); drawMap();
+  const d=st.dest, c=st.cands;
+  let h='';
+  if(c.length){
+    const o=c[0],z=o.z, same=z.brands.includes(st.op);
+    h+=`<h3>목적지 근처 확인 구역</h3><p class="sub">${esc(d.n)} · 걸어서 2분 안 ${c.length}곳</p>
+    <div class="cards"><button class="card" type="button" data-z="${z.id}">
+      <div class="ph"><img src="photos/${esc(z.photo)}.jpg" alt="${esc(placeOf(z))}에 세운 기체 현장 사진" loading="lazy"><span class="tag">현장 사진</span></div>
+      <div class="bd"><div class="ttl"><span class="no">1</span><span>${esc(placeOf(z))} · ${esc(sideOf(z))}</span></div>
+      <div class="meta num">도보 ${mins(o.s)}분 · ${Math.round(o.m)}m · 현장 확인 ${z.n}장면</div>
+      <div class="pills"><span class="pill w">${esc(caution(z))}</span>${z.pz?'<span class="pill g">지정 PM 주차구역</span>':''}${same?`<span class="pill">${esc(st.op)} 기체 확인</span>`:''}</div></div></button>`;
+    c.slice(1).forEach((o,i)=>{const z=o.z;h+=`<button class="row" type="button" data-z="${z.id}"><span class="ic"><img src="photos/${esc(z.photo)}.jpg" alt="" loading="lazy"></span><span style="min-width:0"><b>${i+2}. ${esc(placeOf(z))} · ${esc(sideOf(z))}</b><span class="num">도보 ${mins(o.s)}분 · ${Math.round(o.m)}m · 현장 확인 ${z.n}장면</span></span></button>`});
+    h+=`</div><div class="foot"><button class="btn sub" type="button" data-z="${z.id}">구역 자세히</button><button class="btn" type="button" data-go="${z.id}">이 구역으로 출발</button></div>`;
+  }else{
+    const gaps=store.get('gaps',[]); if(!gaps.some(g=>g.n===d.n&&Math.abs(g.lat-d.lat)<1e-5)){gaps.push({n:d.n,lat:+d.lat.toFixed(5),lon:+d.lon.toFixed(5),at:new Date().toISOString().slice(0,10)});store.set('gaps',gaps)}
+    const n=st.nearest;
+    h+=`<div class="none"><div class="where">${esc(d.n)}</div>
+      <div class="big"><span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span><b>걸어서 2분 안에<br>확인 구역이 없어요</b></div>
+      <div class="chk"><i>✓</i>건물·화단 쪽 가장자리에 세워 주세요</div>
+      <div class="chk"><i>✓</i>구역 밖도 같은 기준으로 판정해요</div>
+      <div class="box">이 목적지는 구역이 필요한 곳으로 기록돼요.${n?`<br>가장 가까운 확인 구역은 <b class="num">도보 약 ${mins(n.s)}분(${Math.round(n.m)}m)</b> 거리예요. <button type="button" data-z="${n.z.id}" style="border:0;background:none;padding:0;color:var(--ink);font-weight:700;text-decoration:underline">보기</button>`:''}</div></div>
+      <div class="foot"><button class="btn sub" type="button" id="ex">주차 예시</button><button class="btn" type="button" id="goany">이대로 출발</button></div>`;
   }
+  $('#sheet').innerHTML=h;
 }
-
-$("btnStart").addEventListener("click", async () => {
-  $("btnStart").disabled = true;
-  try { await startCamera(); }
-  catch (e) { setStatus("sCam", "실패", "bad"); $("hint").textContent = "카메라를 켜지 못했습니다: " + e.message; log("camera error: " + e.name + " " + e.message); $("btnStart").disabled = false; return; }
-  const jobs = [loadMediaPipe().catch((e) => { setStatus("sMp", "실패", "bad"); log("MediaPipe error: " + e.message); }),
-                loadOrt().catch((e) => { setStatus("sOrt", "실패", "bad"); log("ORT error: " + e.message); })];
-  state.live = true; requestAnimationFrame(loop);
-  await Promise.all(jobs);
-  if (state.detector || state.ort) $("btnBench").disabled = false;
-  $("btnStart").textContent = "카메라 켜짐";
+$('#sheet').addEventListener('click',e=>{
+  const z=e.target.closest('[data-z]'); if(z){location.hash='zone-'+z.dataset.z.toLowerCase();return}
+  const g=e.target.closest('[data-go]'); if(g){start(g.dataset.go);return}
+  if(e.target.id==='goany'){toast('구역 밖 반납도 같은 기준으로 판정해요');setTimeout(()=>{location.href=shootUrl(null)},700)}
+  if(e.target.id==='ex'&&st.nearest) location.hash='zone-'+st.nearest.z.id.toLowerCase();
 });
-$("btnBench").addEventListener("click", benchmark);
-$("btnCopy").addEventListener("click", copyResult);
+
+/* ---------- UI-03 ---------- */
+function renderDetail(id){
+  const z=DATA.zones.find(x=>x.id.toLowerCase()===id); if(!z){location.hash=st.dest?'zones':'';return}
+  st.zone=z;
+  const m=st.dest?dist(st.dest,z):null;
+  const shoot={측면:'기체 옆으로 두세 걸음 물러나 바퀴 두 개와 바닥이 다 보이게',정면:'기체 앞에서 두세 걸음 물러나 양옆 바닥이 보이게','위(내려다봄)':'기체 옆에 서서 내려다보되 바퀴 두 개가 다 들어오게'}[z.angle]||'기체 옆으로 두세 걸음 물러나 바퀴 두 개와 바닥이 다 보이게';
+  const codes=[...(z.near||[]).filter(c=>DATA.bad[c]),'B1','C1','A1'].filter((c,i,a)=>a.indexOf(c)===i).slice(0,3);
+  $('#detail').innerHTML=`
+    <div class="zname">${esc(placeOf(z))} · ${esc(sideOf(z))}${m!=null?`<small class="num">도보 ${mins(walk(m))}분</small>`:''}</div>
+    <div class="hero"><img src="photos/${esc(z.photo)}.jpg" alt="${esc(placeOf(z))}에 세운 기체 현장 사진"></div>
+    <dl class="facts">
+      <div class="fact"><dt>세울 방향</dt><dd>${esc(z.why[0]||'건물·화단 쪽 가장자리에 통행 방향으로 나란히')}</dd></div>
+      <div class="fact"><dt>찍을 위치</dt><dd>${esc(shoot)}</dd></div>
+      <div class="fact"><dt>주의</dt><dd class="w">${esc(caution(z))}</dd></div>
+    </dl>
+    <span class="badlbl">이러면 다시 옮겨야 해요</span>
+    <div class="bads">${codes.map(c=>`<div class="bad"><div class="im"><img src="photos/${esc(DATA.bad[c])}.jpg" alt="${esc(BADTXT[c][0])} 예시" loading="lazy"><span class="x">✕</span></div><b>${esc(BADTXT[c][0])}</b><span>${esc(BADTXT[c][1])}</span></div>`).join('')}</div>
+    <p class="rec num">${esc(z.id)} · 현장 확인 ${z.n}장면(${z.np}장) · ${esc(z.d0===z.d1?z.d0:z.d0+'–'+z.d1)} · ${esc(z.t.join('·'))}${z.brands.length?' · '+esc(z.brands.join(', ')):''}${z.pz?' · 지정 PM 주차구역':''}<br>판정 기준표 VER 2로 적합 판정을 받은 위치예요. 근처 부적합 사례에 따라 주의 문구를 골랐어요.</p>`;
+  window.scrollTo(0,0);
+}
+const OPCODE={'빔':'BEAM','스윙':'SWING','지쿠':'GCOO'};
+function shootUrl(z){const p=new URLSearchParams({new:'1',op:OPCODE[st.op]||'BEAM'});if(z){p.set('zone',z.id);p.set('place',placeOf(z)+' · '+sideOf(z))}else p.set('place',(st.dest&&st.dest.n)||'구역 밖');if(st.dest)p.set('dest',st.dest.n);return 'shoot.html?'+p}
+function start(id){const r=store.get('trips',[]);r.push({zone:id,dest:st.dest&&st.dest.n,op:st.op,at:new Date().toISOString()});store.set('trips',r.slice(-20));toast('도착하면 기체를 찍어 반납해요');const z=DATA.zones.find(x=>x.id===id);setTimeout(()=>{location.href=shootUrl(z)},700)}
+$('#go3').addEventListener('click',()=>st.zone&&start(st.zone.id));
+document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>{const h=location.hash.slice(1);location.hash=h.startsWith('zone-')&&st.dest?'zones':''}));
+
+/* ---------- 라우팅 ---------- */
+function route(){
+  const h=location.hash.slice(1);
+  const show=id=>['s1','s2','s3'].forEach(s=>$('#'+s).hidden=s!==id);
+  if(h==='zones'&&st.dest){show('s2');renderZones()}
+  else if(h.startsWith('zone-')){show('s3');renderDetail(h.slice(5))}
+  else{show('s1');renderOps();renderDest()}
+}
+window.addEventListener('hashchange',route);
+window.addEventListener('resize',()=>{if(!$('#s2').hidden)drawMap()});
+fetch('reco_data.json').then(r=>r.json()).then(j=>{DATA=j;
+  $('#srcnote').textContent=`시험판 · 현장 사진으로 적합 판정을 받은 ${j.zones.length}곳을 확인 구역으로 써요 (기록표 10/27). 도보시간은 직선거리 기준 추정값이에요.`;
+  if(!st.dest){const r=store.get('recent',[]);st.dest=DEST.find(d=>d.n===r[0])||null; if(st.dest)$('#q').value=st.dest.n;}
+  if(!st.dest && !location.hash){st.dest=DEST.find(d=>d.n==='광교중앙역 출입구');$('#q').value=st.dest.n}
+  route()}).catch(()=>{$('#dlist').innerHTML='<p class="note">구역 데이터를 불러오지 못했어요. 새로고침해 주세요.</p>'});
+})();
 </script>
-</body>
-</html>
+</body></html>
