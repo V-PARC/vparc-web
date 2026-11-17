@@ -248,7 +248,13 @@ $('btnStart').addEventListener('click', async () => {
   if (!S.guide) S.guide = makeGuide(S.judge?.meta);
   beginLive();
   $('btnShutter').disabled = false;
-  loadDetector(); loadRedactors();
+  loadDetector();                                   // 사람 가림 모델은 '이 사진으로 반납'을 누를 때 받음 (아이폰 메모리 부족 대책)
+});
+// 페이지를 떠날 때 모델 메모리를 돌려줌: 아이폰 사파리는 새로고침해도 메모리를 늦게 비워서 다시 열면 Out of memory가 남 (11/17)
+window.addEventListener('pagehide', () => {
+  try { S.judge && S.judge.release && S.judge.release(); } catch (e) {}
+  for (const k of ['detector', 'segmenter', 'face']) { try { S[k] && S[k].close && S[k].close(); } catch (e) {} S[k] = null; }
+  try { const v = video.srcObject; v && v.getTracks().forEach(t => t.stop()); } catch (e) {}
 });
 // 모델은 페이지를 열자마자 받기 시작 (카메라 켜기 누르기 전)
 loadJudge().then(j => { S.judge = j; S.guide = makeGuide(j.meta); foot(); })
@@ -271,6 +277,7 @@ $('btnShutter').addEventListener('click', () => {
   else pill(S.shotGuide.ready ? '잘 찍혔어요' : '판정이 애매하면 추가 확인으로 접수돼요', S.shotGuide.ready ? 'ok' : null);
 });
 $('btnRetake').addEventListener('click', () => {
+  if (!S.detector && !S.mpFailed && !window.__mockDets) loadDetector();   // 반납 때 닫았던 검출기 다시 켬
   $('shot').style.display = 'none'; video.style.visibility = 'visible'; testImg.style.visibility = 'visible';
   $('barShoot').hidden = false; $('barReview').hidden = true; $('title').textContent = '주차 사진';
   beginLive();
@@ -292,7 +299,12 @@ async function doRedact(c, boxN) {
 $('btnUse').addEventListener('click', async () => {
   $('btnUse').disabled = true; $('btnRetake').disabled = true; $('busy').hidden = false; $('busyText').textContent = '사람을 가리고 있어요';
   try {
-    if (!S.segmenter && window.__mockSeg === undefined) await loadRedactors();
+    if (!S.segmenter && window.__mockSeg === undefined) {
+      // 실시간 검출은 끝났으니 먼저 닫아 메모리를 비우고 가림 모델을 올림
+      try { S.detector && S.detector.close && S.detector.close(); } catch (e) {}
+      S.detector = null;
+      await loadRedactors();
+    }
     const r = await ensureReturn();
     const red = await doRedact(S.shot, S.shotBox);
     // 가린 사진으로 화면에 보여 줄 것 (가림 실패면 사진 없음)

@@ -99,7 +99,8 @@ export async function loadJudge() {
     const p = out.probs.data;
     return { sufficient: p[0], none: p[1], cut: p[2], floor: p[3], blur: p[4], light: p[5] };
   };
-  return { meta, run, ms: performance.now() - t0, cached, retried };
+  const release = () => { try { sess.release && sess.release(); } catch (e) {} };
+  return { meta, run, ms: performance.now() - t0, cached, retried, release };
 }
 
 // ---- A2 안내 상태: 초당 3번, 최근 5번 평균, 사유별 기준값, 1.5초 유지, 3번 연속 충분하면 준비 완료 ----
