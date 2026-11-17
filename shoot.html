@@ -92,16 +92,15 @@ import { SHOOT_TEXT } from './messages.js';
 import { loadJudge, makeGuide, grayStats, store as modelStore } from './judge.js';
 import { redact } from './redact.js';
 import { makeApi, toScreen, uuid } from './api.js';
+import { loadDetector as loadYolo, DET_VERSION } from './detector.js';
 
 // ---- 설정 ----
 const MP_VER = '0.10.14';
 const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/vision_bundle.mjs`;
 const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/wasm`;
-const MP_DET = 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite';
 const MP_SEG = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite';
 const MP_FACE = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
 const PERSON = 15;                                  // DeepLab v3(PASCAL VOC)의 사람 클래스
-const TARGET = new Set(['bicycle', 'motorcycle', 'skateboard']);   // 킥보드는 COCO에 없어서 비슷한 클래스로 대신 잡음
 const EVERY_MS = 333, MAX_SIDE = 1280;
 const API_REASON = { none: 'NO_VEHICLE', cut: 'CROPPED', floor: 'NO_GROUND', blur: 'BLUR', light: 'BACKLIGHT' };
 const HINT = { ...SHOOT_TEXT };
@@ -148,7 +147,7 @@ function showHint(key) {
 function foot() {
   const parts = [];
   parts.push(S.judge ? (S.judge.mock ? '판단 모델: 시험용' : `판단 모델 v2 ${S.judge.cached ? '저장본' : '새로 받음'}${S.judge.retried ? '(재시도)' : ''} ${Math.round(S.judge.ms)}ms${modelStore.note ? '(' + modelStore.note + ')' : ''}`) : (S.judgeError ? `판단 모델 못 불러옴(${S.judgeError.slice(0, 90)}) → 밝기·흔들림만` : '판단 모델 받는 중'));
-  parts.push(S.detector || window.__mockDets ? '검출 켜짐' : (S.mpFailed ? '검출 꺼짐' : '검출 준비 중'));
+  parts.push(window.__mockDets ? '검출: 시험용' : S.detector ? `킥보드 검출 ${S.detector.cached ? '저장본' : '새로 받음'} ${Math.round(S.detector.ms)}ms` : (S.mpFailed ? `킥보드 검출 못 불러옴(${(S.detError || '').slice(0, 60)})` : '킥보드 검출 받는 중'));
   parts.push(api.mock ? '판정: 모의(API 주소 없음)' : '판정 API 연결');
   if (STATIC) parts.push('A안(고정 문구)');
   $('foot').textContent = parts.join(' · ');
@@ -169,8 +168,10 @@ async function make(ctor, opts) {
 }
 async function loadDetector() {
   if (window.__mockDets) return;
-  try { S.detector = await make('ObjectDetector', { baseOptions: { modelAssetPath: MP_DET }, runningMode: TEST ? 'IMAGE' : 'VIDEO', scoreThreshold: 0.3, maxResults: 5 }); }
-  catch (e) { console.warn('검출 모델 실패', e); S.mpFailed = true; }
+  if (S.detLoading) return; S.detLoading = true;
+  try { S.detector = await loadYolo(); S.mpFailed = false; }                  // 이정수 YOLO26n 킥보드 검출기 (MediaPipe 대신)
+  catch (e) { console.warn('검출 모델 실패', e); S.mpFailed = true; S.detError = String(e.message || e); }
+  S.detLoading = false;
   foot();
 }
 async function loadRedactors() {                    // 셔터 전에 미리 받아 둠 (가림은 반납 누를 때 실행)
@@ -180,19 +181,14 @@ async function loadRedactors() {                    // 셔터 전에 미리 받�
   try { S.face = await make('FaceDetector', { baseOptions: { modelAssetPath: MP_FACE }, runningMode: 'IMAGE', minDetectionConfidence: 0.4 }); }
   catch (e) { console.warn('얼굴 검출 모델 실패', e); }
 }
-function detect() {
-  const [vw, vh] = srcSize(); if (!vw) return null;
-  let dets = [];
-  if (window.__mockDets) dets = window.__mockDets(source());
-  else if (S.detector) {
-    if (TEST) dets = S.detector.detect(testImg).detections;
-    else { const t = performance.now(); S.lastTs = Math.max(t, S.lastTs + 1); dets = S.detector.detectForVideo(video, S.lastTs).detections; }
-  } else return undefined;                          // 검출기 없음: 박스 모름
-  const boxes = dets.filter(d => TARGET.has(d.categories[0]?.categoryName));
-  if (!boxes.length) return null;
-  const b = boxes.sort((a, c) => c.boundingBox.width * c.boundingBox.height - a.boundingBox.width * a.boundingBox.height)[0];
-  const bb = b.boundingBox;
-  return { x: bb.originX / vw, y: bb.originY / vh, w: bb.width / vw, h: bb.height / vh, score: b.categories[0].score };
+async function detect(src = source(), size = srcSize()) {
+  const [vw, vh] = size; if (!vw) return null;
+  if (window.__mockDets) {
+    const dets = window.__mockDets(src); if (!dets.length) return null;
+    const bb = dets[0].boundingBox; return { x: bb.originX / vw, y: bb.originY / vh, w: bb.width / vw, h: bb.height / vh, score: dets[0].categories[0].score };
+  }
+  if (!S.detector) return undefined;                // 검출기 없음: 박스 모름
+  return S.detector.detect(src, vw, vh);
 }
 
 // 판단 가능성 모델을 못 불러왔을 때: 예전 규칙(밝기·흔들림·박스 위치)으로 같은 모양의 확률을 만듦
@@ -210,7 +206,7 @@ async function tick(now) {
   if (!S.busy && srcSize()[0] && now - S.lastCheck > EVERY_MS) {
     S.lastCheck = now; S.busy = true;
     try {
-      const box = detect();
+      const box = await detect();
       if (box !== undefined) S.box = box;
       const probs = S.judge ? await S.judge.run(source(), box || null) : fallbackProbs(box);
       const key = S.guide.push(probs, performance.now());
@@ -300,6 +296,8 @@ $('btnUse').addEventListener('click', async () => {
   $('btnUse').disabled = true; $('btnRetake').disabled = true; $('busy').hidden = false; $('busyText').textContent = '사람을 가리고 있어요';
   try {
     if (!S.segmenter && window.__mockSeg === undefined) {
+      // 찍은 사진으로 킥보드를 한 번 더 찾아 박스를 맞춤 (화면 박스는 최대 0.3초 전 것)
+      if (S.detector) { try { const b = await detect(S.shot, [S.shot.width, S.shot.height]); if (b !== undefined) S.shotBox = b; } catch (e) { console.warn(e); } }
       // 실시간 검출은 끝났으니 먼저 닫아 메모리를 비우고 가림 모델을 올림
       try { S.detector && S.detector.close && S.detector.close(); } catch (e) {}
       S.detector = null;
@@ -318,7 +316,7 @@ $('btnUse').addEventListener('click', async () => {
       redaction: { status: red.failed ? 'FAILED' : (red.lost ? 'EVIDENCE_LOSS' : 'OK'), masked_ratio_box: +(red.box || 0).toFixed(3), masked_ratio_ground: +(red.floor || 0).toFixed(3) },
       capture_guide: { ready: S.shotGuide.ready, last_reason: S.shotGuide.last_reason, elapsed_ms: S.shotGuide.elapsed_ms, timeout_15s: S.shotGuide.timeout_15s },
       guide_mode: STATIC ? 'A_static' : 'B_ai',
-      model_versions: { detector: 'mediapipe-efficientdet-lite0', judgability: S.judge && !S.judge.mock ? 'jdg-v2' : 'rule-v1' },
+      model_versions: { detector: DET_VERSION, judgability: S.judge && !S.judge.mock ? 'jdg-v2' : 'rule-v1' },
     };
     $('busyText').textContent = '주차 위치를 확인하고 있어요';
     if (!r.returnId) throw new Error(r.startError || '반납 시작 실패');

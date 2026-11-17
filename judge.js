@@ -74,7 +74,7 @@ async function idbPut(key, buf) {
 async function idbDel(key) { try { const db = await idb(); await new Promise((ok) => { const t = db.transaction(IDB_STORE, 'readwrite'); t.objectStore(IDB_STORE).delete(key); t.oncomplete = t.onerror = () => { db.close(); ok(); }; }); } catch (e) {} }
 const errName = (e) => String(e && (e.name || e.message) || e).slice(0, 40);
 
-async function fetchFresh(url) {
+export async function fetchFresh(url) {
   const key = keyOf(url);
   const res = await fetch(url, { cache: 'reload' }); if (!res.ok) throw new Error(url + ' ' + res.status);
   const buf = await res.arrayBuffer();
@@ -84,7 +84,7 @@ async function fetchFresh(url) {
   store.note = saved ? '' : '저장 안 됨: ' + why.trim();
   return buf;
 }
-async function fetchCached(url) {
+export async function fetchCached(url) {
   const key = keyOf(url); let why = '';
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   if ('caches' in self) {
@@ -96,12 +96,12 @@ async function fetchCached(url) {
   if (!store.note) store.note = why === '저장본 없음' ? '' : why;
   return { buf, cached: false };
 }
-async function dropCached(url) {
+export async function dropCached(url) {
   const key = keyOf(url);
   if ('caches' in self) { try { const c = await caches.open(CACHE); await c.delete(key); await c.delete(url); } catch (e) {} }
   await idbDel(key);
 }
-function loadOrt() {
+export function loadOrt() {
   if (window.ort) return Promise.resolve(window.ort);
   return new Promise((ok, bad) => {
     const s = document.createElement('script');
