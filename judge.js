@@ -51,19 +51,20 @@ export function imageTensor(src) {
 }
 
 // ---- 모델 받기 (한 번 받으면 폰에 저장: 10/13 로딩 대책) ----
+// 아이폰에서 저장본이 깨지면 계속 실패하던 문제(11/17) → 받은 바이트를 그대로 새 Response로 저장하고, 실패하면 저장본을 지우고 다시 받음
+async function fetchFresh(url) {
+  const res = await fetch(url, { cache: 'reload' }); if (!res.ok) throw new Error(url + ' ' + res.status);
+  const buf = await res.arrayBuffer();
+  if ('caches' in self) { try { const c = await caches.open(CACHE); await c.put(url, new Response(buf.slice(0), { headers: { 'Content-Type': 'application/octet-stream' } })); } catch (e) {} }
+  return buf;
+}
 async function fetchCached(url) {
   if ('caches' in self) {
-    try {
-      const c = await caches.open(CACHE), hit = await c.match(url);
-      if (hit) return { buf: await hit.arrayBuffer(), cached: true };
-      const res = await fetch(url); if (!res.ok) throw new Error(url + ' ' + res.status);
-      await c.put(url, res.clone());
-      return { buf: await res.arrayBuffer(), cached: false };
-    } catch (e) { if (String(e).includes(url)) throw e; }
+    try { const c = await caches.open(CACHE), hit = await c.match(url); if (hit) return { buf: await hit.arrayBuffer(), cached: true }; } catch (e) {}
   }
-  const res = await fetch(url); if (!res.ok) throw new Error(url + ' ' + res.status);
-  return { buf: await res.arrayBuffer(), cached: false };
+  return { buf: await fetchFresh(url), cached: false };
 }
+async function dropCached(url) { if ('caches' in self) { try { const c = await caches.open(CACHE); await c.delete(url); } catch (e) {} } }
 function loadOrt() {
   if (window.ort) return Promise.resolve(window.ort);
   return new Promise((ok, bad) => {
@@ -81,8 +82,16 @@ export async function loadJudge() {
   const ort = await loadOrt();
   ort.env.wasm.wasmPaths = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VER}/dist/`;
   ort.env.wasm.numThreads = (self.crossOriginIsolated && navigator.hardwareConcurrency > 1) ? Math.min(4, navigator.hardwareConcurrency) : 1;
-  const { buf, cached } = await fetchCached(MODEL_URL);
-  const sess = await ort.InferenceSession.create(buf, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+  const create = (b) => ort.InferenceSession.create(b, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+  let { buf, cached } = await fetchCached(MODEL_URL), sess, retried = null;
+  try { sess = await create(buf); }
+  catch (e1) {                                                // 저장본이 깨졌거나 받다 끊긴 경우: 지우고 한 번 더 새로 받음
+    retried = String(e1 && e1.message || e1).slice(0, 80); buf = null;
+    await dropCached(MODEL_URL);
+    try { buf = await fetchFresh(MODEL_URL); cached = false; sess = await create(buf); }
+    catch (e2) { const err = new Error('다시 받아도 실패: ' + String(e2 && e2.message || e2).slice(0, 80) + ' / 처음: ' + retried); throw err; }
+  }
+  buf = null;
   const run = async (src, box) => {
     const img = new ort.Tensor('float32', imageTensor(src), [1, 3, 224, 224]);
     const ft = new ort.Tensor('float32', features(grayStats(src), box), [1, 6]);
@@ -90,7 +99,7 @@ export async function loadJudge() {
     const p = out.probs.data;
     return { sufficient: p[0], none: p[1], cut: p[2], floor: p[3], blur: p[4], light: p[5] };
   };
-  return { meta, run, ms: performance.now() - t0, cached };
+  return { meta, run, ms: performance.now() - t0, cached, retried };
 }
 
 // ---- A2 안내 상태: 초당 3번, 최근 5번 평균, 사유별 기준값, 1.5초 유지, 3번 연속 충분하면 준비 완료 ----

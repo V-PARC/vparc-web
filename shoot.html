@@ -147,7 +147,7 @@ function showHint(key) {
 }
 function foot() {
   const parts = [];
-  parts.push(S.judge ? (S.judge.mock ? '판단 모델: 시험용' : `판단 모델 v2 ${S.judge.cached ? '저장본' : '새로 받음'} ${Math.round(S.judge.ms)}ms`) : (S.judgeError ? '판단 모델 못 불러옴 → 밝기·흔들림만' : '판단 모델 받는 중'));
+  parts.push(S.judge ? (S.judge.mock ? '판단 모델: 시험용' : `판단 모델 v2 ${S.judge.cached ? '저장본' : '새로 받음'}${S.judge.retried ? '(재시도)' : ''} ${Math.round(S.judge.ms)}ms`) : (S.judgeError ? `판단 모델 못 불러옴(${S.judgeError.slice(0, 90)}) → 밝기·흔들림만` : '판단 모델 받는 중'));
   parts.push(S.detector || window.__mockDets ? '검출 켜짐' : (S.mpFailed ? '검출 꺼짐' : '검출 준비 중'));
   parts.push(api.mock ? '판정: 모의(API 주소 없음)' : '판정 API 연결');
   if (STATIC) parts.push('A안(고정 문구)');
