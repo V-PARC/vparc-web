@@ -51,20 +51,56 @@ export function imageTensor(src) {
 }
 
 // ---- 모델 받기 (한 번 받으면 폰에 저장: 10/13 로딩 대책) ----
-// 아이폰에서 저장본이 깨지면 계속 실패하던 문제(11/17) → 받은 바이트를 그대로 새 Response로 저장하고, 실패하면 저장본을 지우고 다시 받음
+// 11/17 아이폰: 저장본이 깨지면 계속 실패 → 실패 시 지우고 다시 받음. 저장이 안 되는 경우 대비로 IndexedDB에도 저장하고 이유를 기록
+export const store = { note: '' };                 // 화면 맨 아래에 보여 줄 저장 상태
+const IDB = 'vparc-models', IDB_STORE = 'files';
+const keyOf = (url) => new URL(url, location.href).href;
+function idb() {
+  return new Promise((ok, bad) => {
+    if (!('indexedDB' in self)) return bad(new Error('no indexedDB'));
+    const r = indexedDB.open(IDB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+    r.onsuccess = () => ok(r.result); r.onerror = () => bad(r.error);
+  });
+}
+async function idbGet(key) {
+  const db = await idb();
+  return new Promise((ok, bad) => { const q = db.transaction(IDB_STORE).objectStore(IDB_STORE).get(key); q.onsuccess = () => { db.close(); ok(q.result || null); }; q.onerror = () => { db.close(); bad(q.error); }; });
+}
+async function idbPut(key, buf) {
+  const db = await idb();
+  return new Promise((ok, bad) => { const t = db.transaction(IDB_STORE, 'readwrite'); t.objectStore(IDB_STORE).put(buf, key); t.oncomplete = () => { db.close(); ok(); }; t.onerror = () => { db.close(); bad(t.error); }; });
+}
+async function idbDel(key) { try { const db = await idb(); await new Promise((ok) => { const t = db.transaction(IDB_STORE, 'readwrite'); t.objectStore(IDB_STORE).delete(key); t.oncomplete = t.onerror = () => { db.close(); ok(); }; }); } catch (e) {} }
+const errName = (e) => String(e && (e.name || e.message) || e).slice(0, 40);
+
 async function fetchFresh(url) {
+  const key = keyOf(url);
   const res = await fetch(url, { cache: 'reload' }); if (!res.ok) throw new Error(url + ' ' + res.status);
   const buf = await res.arrayBuffer();
-  if ('caches' in self) { try { const c = await caches.open(CACHE); await c.put(url, new Response(buf.slice(0), { headers: { 'Content-Type': 'application/octet-stream' } })); } catch (e) {} }
+  let saved = false, why = '';
+  if ('caches' in self) { try { const c = await caches.open(CACHE); await c.put(key, new Response(buf.slice(0), { headers: { 'Content-Type': 'application/octet-stream' } })); saved = true; } catch (e) { why = 'cache ' + errName(e); } }
+  if (!saved) { try { await idbPut(key, buf.slice(0)); saved = true; why = ''; } catch (e) { why += ' idb ' + errName(e); } }
+  store.note = saved ? '' : '저장 안 됨: ' + why.trim();
   return buf;
 }
 async function fetchCached(url) {
+  const key = keyOf(url); let why = '';
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   if ('caches' in self) {
-    try { const c = await caches.open(CACHE), hit = await c.match(url); if (hit) return { buf: await hit.arrayBuffer(), cached: true }; } catch (e) {}
+    try { const c = await caches.open(CACHE), hit = await c.match(key); if (hit) return { buf: await hit.arrayBuffer(), cached: true }; why = '저장본 없음'; }
+    catch (e) { why = 'cache 읽기 ' + errName(e); }
   }
-  return { buf: await fetchFresh(url), cached: false };
+  try { const b = await idbGet(key); if (b) return { buf: b, cached: true }; } catch (e) {}
+  const buf = await fetchFresh(url);
+  if (!store.note) store.note = why === '저장본 없음' ? '' : why;
+  return { buf, cached: false };
 }
-async function dropCached(url) { if ('caches' in self) { try { const c = await caches.open(CACHE); await c.delete(url); } catch (e) {} } }
+async function dropCached(url) {
+  const key = keyOf(url);
+  if ('caches' in self) { try { const c = await caches.open(CACHE); await c.delete(key); await c.delete(url); } catch (e) {} }
+  await idbDel(key);
+}
 function loadOrt() {
   if (window.ort) return Promise.resolve(window.ort);
   return new Promise((ok, bad) => {
