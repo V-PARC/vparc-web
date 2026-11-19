@@ -50,12 +50,12 @@
 
   <div class="card">
     <div class="stats" id="stats"></div>
-    <p class="sub" style="margin:8px 0 0">왕복 = 판정 요청을 보내고 응답을 받을 때까지(업로드 포함). 서버 = 응답의 elapsed_ms. 네트워크 = 왕복 − 서버.</p>
+    <p class="sub" style="margin:8px 0 0">왕복 = 판정 요청을 보내고 응답을 받을 때까지(업로드 포함). 서버 = 응답의 elapsed_ms. 네트워크 = 왕복 − 서버. 시설물·판정기 = 서버 처리 중 모델 단계별 시간(서버가 보낼 때만).</p>
   </div>
 
   <div class="card wrap">
     <table>
-      <thead><tr><th>시각</th><th>사진</th><th>결과</th><th>KB</th><th>왕복 ms</th><th>서버 ms</th><th>네트워크 ms</th><th>반납 시작 ms</th></tr></thead>
+      <thead><tr><th>시각</th><th>사진</th><th>결과</th><th>KB</th><th>왕복 ms</th><th>서버 ms</th><th>네트워크 ms</th><th>시설물 ms</th><th>판정기 ms</th><th>반납 시작 ms</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
   </div>
@@ -104,6 +104,7 @@ async function once() {
     if (!res.ok) throw new Error(`judgments ${res.status} ${j.error?.code || ''}`);
     rec.server_ms = j.elapsed_ms; rec.net_ms = rec.total_ms - j.elapsed_ms; rec.result = j.result + (j.review_reason ? `(${j.review_reason})` : '');
     rec.model = j.versions?.judge_model;
+    if (j.model_ms) { rec.fac_ms = Math.round(j.model_ms.facilities); rec.judge_ms = Math.round(j.model_ms.judge); rec.decode_ms = Math.round(j.model_ms.decode); }
     const outcome = j.result === 'UNSUITABLE' ? 'UNSUITABLE_ACCEPTED' : j.result;
     await postJson(`/returns/${encodeURIComponent(r.return_id)}/finish`, { request_id: uuid(), judgment_id: j.judgment_id, outcome }).catch(() => {});
   } catch (e) { rec.error = String(e.message || e); }
@@ -119,11 +120,11 @@ function render() {
   const ok = rows.filter(r => !r.error), recent = ok.filter(r => Date.now() - Date.parse(r.at) < 10 * 60e3);
   const errs = rows.length - ok.length;
   $('stats').innerHTML = stat('왕복 중앙값 (전체)', ok.map(r => r.total_ms)) + stat('왕복 중앙값 (최근 10분)', recent.map(r => r.total_ms)) +
-    stat('서버 처리 중앙값', ok.map(r => r.server_ms)) + stat('네트워크·업로드 중앙값', ok.map(r => r.net_ms)) +
+    stat('서버 처리 중앙값', ok.map(r => r.server_ms)) + stat('시설물 검출(YOLOE) 중앙값', ok.filter(r => r.fac_ms != null).map(r => r.fac_ms)) + stat('판정기 중앙값', ok.filter(r => r.judge_ms != null).map(r => r.judge_ms)) + stat('네트워크·업로드 중앙값', ok.map(r => r.net_ms)) +
     `<div class="stat"><span>3초 넘은 비율 / 실패</span><b>${ok.length ? Math.round(100 * ok.filter(r => r.total_ms > 3000).length / ok.length) : '–'}%</b><span>실패 ${errs}건 · 모델 ${ok.at(-1)?.model || '–'}</span></div>`;
   $('rows').innerHTML = rows.slice(-30).reverse().map(r => r.error
-    ? `<tr><td>${r.at.slice(11, 19)}</td><td>${r.photo}</td><td class="err" colspan="6">${r.error}</td></tr>`
-    : `<tr><td>${r.at.slice(11, 19)}</td><td>${r.photo}</td><td>${r.result}</td><td>${r.kb}</td><td>${r.total_ms}</td><td>${r.server_ms}</td><td>${r.net_ms}</td><td>${r.start_ms}</td></tr>`).join('');
+    ? `<tr><td>${r.at.slice(11, 19)}</td><td>${r.photo}</td><td class="err" colspan="8">${r.error}</td></tr>`
+    : `<tr><td>${r.at.slice(11, 19)}</td><td>${r.photo}</td><td>${r.result}</td><td>${r.kb}</td><td>${r.total_ms}</td><td>${r.server_ms}</td><td>${r.net_ms}</td><td>${r.fac_ms ?? '–'}</td><td>${r.judge_ms ?? '–'}</td><td>${r.start_ms}</td></tr>`).join('');
   $('csv').disabled = !rows.length;
   if (timer) $('status').textContent = `측정 중 · ${rows.length}회` + (endAt ? ` · ${Math.max(0, Math.round((endAt - Date.now()) / 60e3))}분 남음` : ' · 계속');
 }
@@ -140,7 +141,7 @@ $('start').onclick = () => {
 };
 $('stop').onclick = () => stop();
 $('csv').onclick = () => {
-  const cols = ['at', 'photo', 'result', 'model', 'kb', 'start_ms', 'total_ms', 'server_ms', 'net_ms', 'error'];
+  const cols = ['at', 'photo', 'result', 'model', 'kb', 'start_ms', 'total_ms', 'server_ms', 'net_ms', 'decode_ms', 'fac_ms', 'judge_ms', 'error'];
   const csv = '﻿' + cols.join(',') + '\n' + rows.map(r => cols.map(c => JSON.stringify(r[c] ?? '')).join(',')).join('\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   a.download = `vparc_latency_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}.csv`; a.click();
