@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V-PARC 판정 지연 측정</title>
+<meta name="robots" content="noindex">
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#16181d; --muted:#5d6470; --line:#e2e5ea; --accent:#1f6feb; --bad:#cf222e; --ok:#1a7f37; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --card:#181b21; --text:#e8eaee; --muted:#9aa2ae; --line:#2a2f37; --accent:#4c8dff; --bad:#f85149; --ok:#3fb950; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif; padding:16px; }
+  main { max-width:900px; margin:0 auto; }
+  h1 { font-size:20px; margin:0 0 4px; } .sub { color:var(--muted); margin:0 0 12px; font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin:12px 0; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+  label { display:flex; flex-direction:column; font-size:12px; color:var(--muted); gap:4px; }
+  input { font:inherit; padding:8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); width:120px; }
+  button { font:inherit; font-weight:600; border:0; border-radius:8px; padding:10px 14px; background:var(--accent); color:#fff; cursor:pointer; }
+  button.sub { background:var(--line); color:var(--text); }
+  button:disabled { opacity:.4; cursor:default; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+  .stat { border:1px solid var(--line); border-radius:10px; padding:10px; }
+  .stat b { display:block; font-size:22px; font-variant-numeric:tabular-nums; }
+  .stat span { font-size:12px; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; font-size:13px; }
+  th, td { text-align:right; padding:5px 6px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align:left; }
+  .err { color:var(--bad); } .muted { color:var(--muted); }
+  .wrap { overflow-x:auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>판정 지연 측정</h1>
+  <p class="sub">실제 반납 흐름(반납 시작 → 판정 → 종료)대로 사진을 보내고 시간을 잽니다. 기록은 시험 세션 <code>P99-A-1</code>로 저장돼 집계에서 빠져요.
+    API: <code id="api"></code></p>
+
+  <div class="card">
+    <div class="row">
+      <label>간격(초)<input id="every" type="number" min="5" value="30"></label>
+      <label>측정 시간(분, 0이면 계속)<input id="dur" type="number" min="0" value="60"></label>
+      <label>사진 긴 변(px)<input id="side" type="number" min="320" max="1920" value="1280"></label>
+      <button id="start">시작</button>
+      <button id="stop" class="sub" disabled>멈추기</button>
+      <button id="csv" class="sub" disabled>CSV 받기</button>
+    </div>
+    <p class="sub" id="status" style="margin:10px 0 0">대기 중. 노트북이 잠자기에 들어가면 측정이 멈춰요.</p>
+  </div>
+
+  <div class="card">
+    <div class="stats" id="stats"></div>
+    <p class="sub" style="margin:8px 0 0">왕복 = 판정 요청을 보내고 응답을 받을 때까지(업로드 포함). 서버 = 응답의 elapsed_ms. 네트워크 = 왕복 − 서버.</p>
+  </div>
+
+  <div class="card wrap">
+    <table>
+      <thead><tr><th>시각</th><th>사진</th><th>결과</th><th>KB</th><th>왕복 ms</th><th>서버 ms</th><th>네트워크 ms</th><th>반납 시작 ms</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</main>
+<script type="module">
+import { apiBase, uuid } from './api.js';
+
+const $ = id => document.getElementById(id);
+const BASE = apiBase();
+$('api').textContent = BASE || '없음 (모의 모드라 측정할 수 없어요. ?api=https://…/v1 로 열어 주세요)';
+const PHOTOS = ['1-JTW-001', '1-JTW-026', '1-JTW-032', '1-JTW-037', '1-JTW-064', '1-JTW-216'];
+const rows = [];
+let timer = null, endAt = 0, busy = false, n = 0;
+
+async function photoBlob(name, side) {
+  const img = new Image(); img.src = `photos/${name}.jpg`; await img.decode();
+  const k = side / Math.max(img.naturalWidth, img.naturalHeight);
+  const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));       // 촬영 화면과 같은 크기·품질
+}
+async function postJson(path, body) {
+  const res = await fetch(BASE + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`${path} ${res.status} ${j.error?.code || ''}`);
+  return j;
+}
+
+async function once() {
+  if (busy) return; busy = true;
+  const name = PHOTOS[n++ % PHOTOS.length];
+  const rec = { at: new Date().toISOString(), photo: name };
+  try {
+    const blob = await photoBlob(name, +$('side').value || 1280);
+    rec.kb = Math.round(blob.size / 1024);
+    let t = performance.now();
+    const r = await postJson('/returns', { request_id: uuid(), operator: 'BEAM', test_session: 'P99-A-1' });
+    rec.start_ms = Math.round(performance.now() - t);
+    const meta = { request_id: uuid(), attempt: 1, captured_at: rec.at, redaction: { status: 'OK', masked_ratio_box: 0, masked_ratio_ground: 0 },
+      box: { x1: 0.3, y1: 0.35, x2: 0.7, y2: 0.92, score: 0.9, label: 'kickboard' }, caution: [], model_versions: { detector: 'bench', judgability: 'bench' } };
+    const fd = new FormData(); fd.append('photo', blob, 'photo.jpg'); fd.append('meta', JSON.stringify(meta));
+    t = performance.now();
+    const res = await fetch(`${BASE}/returns/${encodeURIComponent(r.return_id)}/judgments`, { method: 'POST', body: fd });
+    rec.total_ms = Math.round(performance.now() - t);
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(`judgments ${res.status} ${j.error?.code || ''}`);
+    rec.server_ms = j.elapsed_ms; rec.net_ms = rec.total_ms - j.elapsed_ms; rec.result = j.result + (j.review_reason ? `(${j.review_reason})` : '');
+    rec.model = j.versions?.judge_model;
+    const outcome = j.result === 'UNSUITABLE' ? 'UNSUITABLE_ACCEPTED' : j.result;
+    await postJson(`/returns/${encodeURIComponent(r.return_id)}/finish`, { request_id: uuid(), judgment_id: j.judgment_id, outcome }).catch(() => {});
+  } catch (e) { rec.error = String(e.message || e); }
+  rows.push(rec); busy = false; render();
+}
+
+const q = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.ceil(p * s.length) - 1)]; };
+function stat(label, vals, unit = 'ms') {
+  const m = q(vals, 0.5), p90 = q(vals, 0.9);
+  return `<div class="stat"><span>${label}</span><b>${m == null ? '–' : m.toLocaleString()}${m == null ? '' : unit}</b><span>p90 ${p90 == null ? '–' : p90.toLocaleString()} · n=${vals.length}</span></div>`;
+}
+function render() {
+  const ok = rows.filter(r => !r.error), recent = ok.filter(r => Date.now() - Date.parse(r.at) < 10 * 60e3);
+  const errs = rows.length - ok.length;
+  $('stats').innerHTML = stat('왕복 중앙값 (전체)', ok.map(r => r.total_ms)) + stat('왕복 중앙값 (최근 10분)', recent.map(r => r.total_ms)) +
+    stat('서버 처리 중앙값', ok.map(r => r.server_ms)) + stat('네트워크·업로드 중앙값', ok.map(r => r.net_ms)) +
+    `<div class="stat"><span>3초 넘은 비율 / 실패</span><b>${ok.length ? Math.round(100 * ok.filter(r => r.total_ms > 3000).length / ok.length) : '–'}%</b><span>실패 ${errs}건 · 모델 ${ok.at(-1)?.model || '–'}</span></div>`;
+  $('rows').innerHTML = rows.slice(-30).reverse().map(r => r.error
+    ? `<tr><td>${r.at.slice(11, 19)}</td><td>${r.photo}</td><td class="err" colspan="6">${r.error}</td></tr>`
+    : `<tr><td>${r.at.slice(11, 19)}</td><td>${r.photo}</td><td>${r.result}</td><td>${r.kb}</td><td>${r.total_ms}</td><td>${r.server_ms}</td><td>${r.net_ms}</td><td>${r.start_ms}</td></tr>`).join('');
+  $('csv').disabled = !rows.length;
+  if (timer) $('status').textContent = `측정 중 · ${rows.length}회` + (endAt ? ` · ${Math.max(0, Math.round((endAt - Date.now()) / 60e3))}분 남음` : ' · 계속');
+}
+function stop(msg) { clearInterval(timer); timer = null; $('start').disabled = false; $('stop').disabled = true; $('status').textContent = msg || `멈춤 · ${rows.length}회`; }
+
+$('start').onclick = () => {
+  if (!BASE) { $('status').textContent = 'API 주소가 없어요 (모의 모드)'; return; }
+  const every = Math.max(5, +$('every').value || 30) * 1000, dur = +$('dur').value || 0;
+  endAt = dur ? Date.now() + dur * 60e3 : 0;
+  $('start').disabled = true; $('stop').disabled = false;
+  once();
+  timer = setInterval(() => { if (endAt && Date.now() > endAt) { stop(`끝 · ${rows.length}회`); return; } once(); }, every);
+  render();
+};
+$('stop').onclick = () => stop();
+$('csv').onclick = () => {
+  const cols = ['at', 'photo', 'result', 'model', 'kb', 'start_ms', 'total_ms', 'server_ms', 'net_ms', 'error'];
+  const csv = '﻿' + cols.join(',') + '\n' + rows.map(r => cols.map(c => JSON.stringify(r[c] ?? '')).join(',')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = `vparc_latency_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}.csv`; a.click();
+};
+const qs = new URLSearchParams(location.search);
+if (qs.get('every')) $('every').value = qs.get('every');
+if (qs.get('dur')) $('dur').value = qs.get('dur');
+render();
+if (qs.get('auto') === '1') $('start').click();
+</script>
+</body>
+</html>
