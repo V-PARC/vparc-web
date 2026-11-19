@@ -320,20 +320,22 @@ function renderDetail(id){
   window.scrollTo(0,0);
 }
 const OPCODE={'빔':'BEAM','스윙':'SWING','지쿠':'GCOO'};
+// 시험 세션(?session=P01-A-1): 이 탭에서 기억해 두고 공백 기록·촬영 화면에 같이 넘긴다(집계에서 빠짐)
+const SESSION=(()=>{const v=new URLSearchParams(location.search).get('session');try{if(v&&/^P\d{2}-[AB]-\d$/.test(v))sessionStorage.setItem('vparc.session',v);return sessionStorage.getItem('vparc.session')||''}catch(e){return v&&/^P\d{2}-[AB]-\d$/.test(v)?v:''}})();
 // 목적지 ID: 웹 목록에는 ID가 없어 이름(지도에서 고른 곳은 좌표)으로 만든다. 서버는 W- ID를 처음 보면 목적지로 등록
 function destId(d){const k=d.pick?`${d.lat.toFixed(4)},${d.lon.toFixed(4)}`:d.n;let h=0x811c9dc5;for(const c of k){h^=c.codePointAt(0);h=Math.imul(h,0x01000193)>>>0}return 'W-'+h.toString(16).padStart(8,'0')}
 function destInfo(d){return {name:d.n.slice(0,80),lat:+d.lat.toFixed(5),lon:+d.lon.toFixed(5),region:d.a||null}}
 // A5 허브 후보 입력: 구역 없는 목적지를 서버 공백 기록(POST /v1/gaps)으로. 같은 목적지는 하루 한 번, 모의 모드면 보내지 않음
 function sendGap(d){
-  const id=destId(d), day=new Date().toISOString().slice(0,10), sent=store.get('gaps_sent',{});
-  if(sent[id]===day)return;
+  const id=destId(d), day=new Date().toISOString().slice(0,10), sent=store.get('gaps_sent',{}), key=SESSION?id+'@'+SESSION:id;
+  if(sent[key]===day)return;
   import('./api.js').then(({apiBase,uuid})=>{const base=apiBase();if(!base)return;
     return fetch(base+'/gaps',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({request_id:uuid(),destination_id:id,destination:destInfo(d),operator:OPCODE[st.op]||'BEAM',searched_at:new Date().toISOString()})})
-      .then(r=>{if(r.ok){sent[id]=day;store.set('gaps_sent',sent)}});
+      body:JSON.stringify({request_id:uuid(),destination_id:id,destination:destInfo(d),operator:OPCODE[st.op]||'BEAM',searched_at:new Date().toISOString(),...(SESSION?{test_session:SESSION}:{})})})
+      .then(r=>{if(r.ok){sent[key]=day;store.set('gaps_sent',sent)}});
   }).catch(e=>console.warn('공백 기록 실패',e));
 }
-function shootUrl(z){const p=new URLSearchParams({new:'1',op:OPCODE[st.op]||'BEAM'});if(z){p.set('zone',z.id);p.set('place',placeOf(z)+' · '+sideOf(z))}else p.set('place',(st.dest&&st.dest.n)||'구역 밖');if(st.dest){const i=destInfo(st.dest);p.set('dest',st.dest.n);p.set('dest_id',destId(st.dest));p.set('dest_lat',i.lat);p.set('dest_lon',i.lon);if(i.region)p.set('dest_a',i.region)}return 'shoot.html?'+p}
+function shootUrl(z){const p=new URLSearchParams({new:'1',op:OPCODE[st.op]||'BEAM'});if(SESSION)p.set('session',SESSION);if(z){p.set('zone',z.id);p.set('place',placeOf(z)+' · '+sideOf(z))}else p.set('place',(st.dest&&st.dest.n)||'구역 밖');if(st.dest){const i=destInfo(st.dest);p.set('dest',st.dest.n);p.set('dest_id',destId(st.dest));p.set('dest_lat',i.lat);p.set('dest_lon',i.lon);if(i.region)p.set('dest_a',i.region)}return 'shoot.html?'+p}
 function start(id){const r=store.get('trips',[]);r.push({zone:id,dest:st.dest&&st.dest.n,op:st.op,at:new Date().toISOString()});store.set('trips',r.slice(-20));toast('도착하면 기체를 찍어 반납해요');const z=DATA.zones.find(x=>x.id===id);setTimeout(()=>{location.href=shootUrl(z)},700)}
 $('#go3').addEventListener('click',()=>st.zone&&start(st.zone.id));
 document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>{const h=location.hash.slice(1);location.hash=h.startsWith('zone-')&&st.dest?'zones':''}));
