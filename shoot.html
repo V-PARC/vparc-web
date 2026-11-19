@@ -117,6 +117,25 @@ const S = { detector: null, segmenter: null, face: null, judge: null, guide: nul
   box: null, boxScore: 0, mpFailed: false, shot: null, shotBox: null, startedAt: 0 };
 window.__vparc = S;
 
+// ---- 휴대폰 위치 (서버가 횡단보도·정류소·어린이보호구역 근처인지 보고 기준만 엄격하게 함. 서버는 좌표를 저장하지 않음) ----
+// 거부·실패해도 판정은 그대로. 찍기 직전 1분 안의 위치만 보냄
+const GEO = { pos: null, watch: null };
+function startGeo() {
+  if (!navigator.geolocation || GEO.watch !== null) return;
+  try {
+    GEO.watch = navigator.geolocation.watchPosition(p => { GEO.pos = p; }, e => console.warn('위치', e.message),
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
+  } catch (e) { console.warn(e); }
+}
+function stopGeo() { if (GEO.watch !== null) { try { navigator.geolocation.clearWatch(GEO.watch); } catch {} GEO.watch = null; } }
+function geoMeta() {
+  const p = GEO.pos;
+  if (!p || Date.now() - p.timestamp > 60000) return null;
+  return { lat: +p.coords.latitude.toFixed(6), lon: +p.coords.longitude.toFixed(6),
+    accuracy_m: Math.round(p.coords.accuracy * 10) / 10, source: 'PHONE_GPS', observed_at: new Date(p.timestamp).toISOString() };
+}
+startGeo();
+
 // ---- 반납 세션 (다시 찍으면 같은 return_id, attempt + 1) ----
 function session() { try { return JSON.parse(sessionStorage.getItem('vparc.return') || 'null'); } catch { return null; } }
 function saveSession(s) { try { sessionStorage.setItem('vparc.return', JSON.stringify(s)); } catch {} }
@@ -125,7 +144,9 @@ if (q.get('new') === '1') ret = null;
 async function ensureReturn() {
   if (ret?.returnId) return ret;
   const body = { request_id: uuid(), operator: q.get('op') || 'BEAM', vehicle_type: 'KICKBOARD', zone_id: q.get('zone') || null,
-    destination_id: q.get('dest') || null, ...(/^P\d{2}-[AB]-\d$/.test(q.get('session') || '') ? { test_session: q.get('session') } : {}), client: { app_version: '0.4.0', device: navigator.platform, browser: navigator.userAgent.slice(0, 120) } };
+    destination_id: q.get('dest_id') || null,
+    ...(q.get('dest_id') && q.get('dest_lat') ? { destination: { name: (q.get('dest') || '목적지').slice(0, 80), lat: +q.get('dest_lat'), lon: +q.get('dest_lon'), region: q.get('dest_a') || null } } : {}),
+    ...(/^P\d{2}-[AB]-\d$/.test(q.get('session') || '') ? { test_session: q.get('session') } : {}), client: { app_version: '0.4.0', device: navigator.platform, browser: navigator.userAgent.slice(0, 120) } };
   try {
     const r = await api.startReturn(body);
     ret = { returnId: r.return_id, startedAt: Date.now(), attempt: 0, place: q.get('place') || '시험 장소' };
@@ -317,7 +338,9 @@ $('btnUse').addEventListener('click', async () => {
       capture_guide: { ready: S.shotGuide.ready, last_reason: S.shotGuide.last_reason, elapsed_ms: S.shotGuide.elapsed_ms, timeout_15s: S.shotGuide.timeout_15s },
       guide_mode: STATIC ? 'A_static' : 'B_ai',
       model_versions: { detector: DET_VERSION, judgability: S.judge && !S.judge.mock ? 'jdg-v2' : 'rule-v1' },
+      ...(geoMeta() ? { location: geoMeta() } : {}),
     };
+    stopGeo();
     $('busyText').textContent = '주차 위치를 확인하고 있어요';
     if (!r.returnId) throw new Error(r.startError || '반납 시작 실패');
     const res = await api.judge(r.returnId, meta, red.blob);
