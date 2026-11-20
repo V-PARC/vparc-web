@@ -116,6 +116,11 @@ h2{font-size:15px;font-weight:700;margin:22px 0 10px}
 .rec{font-size:12px;color:var(--ink3);margin:16px 0 4px;line-height:1.6}
 .toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--btn);color:var(--btnfg);font-size:14px;font-weight:600;padding:11px 16px;border-radius:999px;max-width:calc(100% - 48px);z-index:20;box-shadow:0 4px 16px var(--shade)}
 @media (prefers-reduced-motion:no-preference){.scr{animation:in .18s ease-out}@keyframes in{from{opacity:.4;transform:translateY(6px)}to{opacity:1;transform:none}}}
+#kmap{position:absolute;inset:0}
+.kpin{width:28px;height:28px;border-radius:14px;background:var(--pin);color:var(--pinfg);border:2px solid #fff;display:grid;place-items:center;font:700 13px/1 var(--font);box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;transform:translateY(14px)}
+.kdot{width:10px;height:10px;border-radius:5px;background:#9aa0a6;border:1.5px solid #fff;cursor:pointer;transform:translateY(5px)}
+.kdest{background:var(--pin);color:var(--pinfg);font:700 11px/1 var(--font);padding:5px 8px;border-radius:5px;position:relative;margin-bottom:8px}
+.kdest:after{content:"";position:absolute;left:50%;bottom:-8px;width:2px;height:8px;margin-left:-1px;background:var(--pin)}
 </style>
 </head><body>
 
@@ -139,6 +144,7 @@ h2{font-size:15px;font-weight:700;margin:22px 0 10px}
   <!-- UI-02 확인 구역 추천 / 구역 없음 -->
   <section class="scr" id="s2" hidden>
     <div class="mapwrap">
+      <div id="kmap" hidden></div>
       <svg id="map" role="img" aria-label="목적지 주변 지도"></svg>
       <button class="back" type="button" data-back aria-label="뒤로"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 5l-7 7 7 7"/></svg></button>
       <span class="maphint">지도를 누르면 목적지가 옮겨져요</span>
@@ -243,7 +249,7 @@ function recommend(){
   st.cands=all.filter(o=>o.s<LIMIT).sort((a,b)=>tier(a.z)-tier(b.z)||a.s-b.s).slice(0,3);
   st.nearest=all.sort((a,b)=>a.s-b.s)[0];
 }
-function drawMap(){
+function drawSvgMap(){
   const svg=$('#map'), d=st.dest, W=svg.clientWidth||400, H=svg.clientHeight||300;
   const R=LIMIT*SPEED/DETOUR; // 2분 반경(직선)
   const span=Math.max(R*2.9, 300), k=Math.min(W,H)/span; // px per m
@@ -263,6 +269,37 @@ function drawMap(){
   svg.onclick=e=>{const t=e.target.closest('[data-z]');if(t){location.hash='zone-'+t.dataset.z.toLowerCase();return}
     const b=svg.getBoundingClientRect(),x=(e.clientX-b.left)*W/b.width,y=(e.clientY-b.top)*H/b.height;
     st.dest={n:'지도에서 고른 곳',a:d.a,lat:d.lat-(y-cy)/(mlat*k),lon:d.lon+(x-cx)/(mlon*k),pick:true};renderZones()};
+}
+// ---- 카카오 지도 (실패하면 위 그림 지도로 대신) ----
+const KAKAO_KEY='b174edef8b8810b085987f86b671837b';
+let KM=null, kmFail=false, kmWait=null;
+function kakaoReady(){
+  if(window.kakao&&kakao.maps&&kakao.maps.LatLng) return Promise.resolve();
+  if(kmWait) return kmWait;
+  kmWait=new Promise((ok,bad)=>{const s=document.createElement('script');
+    s.src=`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_KEY}&autoload=false`;
+    const t=setTimeout(()=>bad(new Error('timeout')),6000);
+    s.onload=()=>{try{kakao.maps.load(()=>{clearTimeout(t);ok()})}catch(e){clearTimeout(t);bad(e)}};
+    s.onerror=()=>{clearTimeout(t);bad(new Error('sdk'))}; document.head.appendChild(s)});
+  return kmWait;
+}
+function kmPin(html,pos,z,onclick){const el=document.createElement('div');el.innerHTML=html;const n=el.firstElementChild;if(onclick)n.addEventListener('click',e=>{e.stopPropagation();onclick()});
+  const o=new kakao.maps.CustomOverlay({position:pos,content:n,yAnchor:1,zIndex:z});o.setMap(KM.map);KM.ov.push(o);return o}
+function drawMap(){
+  if(kmFail) return drawSvgMap();
+  kakaoReady().then(()=>{
+    const d=st.dest, box=$('#kmap'), C=new kakao.maps.LatLng(d.lat,d.lon), R=LIMIT*SPEED/DETOUR;
+    box.hidden=false; $('#map').style.visibility='hidden';
+    if(!KM){KM={map:new kakao.maps.Map(box,{center:C,level:3}),ov:[]};
+      kakao.maps.event.addListener(KM.map,'click',ev=>{const p=ev.latLng;st.dest={n:'지도에서 고른 곳',a:st.dest.a,lat:p.getLat(),lon:p.getLng(),pick:true};renderZones()});}
+    KM.ov.forEach(o=>o.setMap(null)); KM.ov=[];
+    KM.map.relayout(); KM.map.setCenter(C); KM.map.setLevel(R>180?4:3);
+    KM.ov.push(new kakao.maps.Circle({map:KM.map,center:C,radius:R,strokeWeight:1.5,strokeColor:'#5b5f66',strokeOpacity:.9,strokeStyle:'dash',fillColor:'#0e0f11',fillOpacity:.04}));
+    for(const z of DATA.zones){if(st.cands.some(o=>o.z===z))continue;if(dist(d,z)>R*3)continue;
+      kmPin('<div class="kdot"></div>',new kakao.maps.LatLng(z.lat,z.lon),1,()=>{location.hash='zone-'+z.id.toLowerCase()})}
+    st.cands.forEach((o,i)=>kmPin(`<div class="kpin">${i+1}</div>`,new kakao.maps.LatLng(o.z.lat,o.z.lon),3,()=>{location.hash='zone-'+o.z.id.toLowerCase()}));
+    kmPin('<div class="kdest">목적지</div>',C,4,null);
+  }).catch(e=>{console.warn('카카오 지도 실패, 그림 지도로 대신',e);kmFail=true;$('#kmap').hidden=true;$('#map').style.visibility='';drawSvgMap()});
 }
 function renderZones(){
   if(!st.dest){location.hash='';return}
@@ -295,7 +332,7 @@ function renderZones(){
 $('#sheet').addEventListener('click',e=>{
   const z=e.target.closest('[data-z]'); if(z){location.hash='zone-'+z.dataset.z.toLowerCase();return}
   const g=e.target.closest('[data-go]'); if(g){start(g.dataset.go);return}
-  if(e.target.id==='goany'){toast('구역 밖 반납도 같은 기준으로 판정해요');setTimeout(()=>{location.href=shootUrl(null)},700)}
+  if(e.target.id==='goany'){toast('구역 밖 반납도 같은 기준으로 판정해요');setTimeout(()=>{location.href=retUrl(null)},700)}
   if(e.target.id==='ex'&&st.nearest) location.hash='zone-'+st.nearest.z.id.toLowerCase();
 });
 
@@ -336,7 +373,11 @@ function sendGap(d){
   }).catch(e=>console.warn('공백 기록 실패',e));
 }
 function shootUrl(z){const p=new URLSearchParams({new:'1',op:OPCODE[st.op]||'BEAM'});if(SESSION)p.set('session',SESSION);if(z){p.set('zone',z.id);p.set('place',placeOf(z)+' · '+sideOf(z))}else p.set('place',(st.dest&&st.dest.n)||'구역 밖');if(st.dest){const i=destInfo(st.dest);p.set('dest',st.dest.n);p.set('dest_id',destId(st.dest));p.set('dest_lat',i.lat);p.set('dest_lon',i.lon);if(i.region)p.set('dest_a',i.region)}return 'shoot.html?'+p}
-function start(id){const r=store.get('trips',[]);r.push({zone:id,dest:st.dest&&st.dest.n,op:st.op,at:new Date().toISOString()});store.set('trips',r.slice(-20));toast('도착하면 기체를 찍어 반납해요');const z=DATA.zones.find(x=>x.id===id);setTimeout(()=>{location.href=shootUrl(z)},700)}
+const TIP={측면:'기체 옆으로 두세 걸음 물러나 바퀴 두 개와 바닥이 다 보이게',정면:'기체 앞에서 두세 걸음 물러나 양옆 바닥이 보이게','위(내려다봄)':'기체 옆에 서서 내려다보되 바퀴 두 개가 다 들어오게'};
+// UI-04 반납하기 화면을 거쳐 촬영으로
+function retUrl(z){const p=new URLSearchParams({next:shootUrl(z),op:OPCODE[st.op]||'BEAM'});if(z){p.set('zone',z.id);p.set('place',placeOf(z));p.set('side',sideOf(z));p.set('caution',caution(z));p.set('photo',z.photo);p.set('tip',TIP[z.angle]||TIP['측면'])}if(st.dest)p.set('dest',st.dest.n);return 'return.html?'+p}
+try{if(!sessionStorage.getItem('vparc.rideStart'))sessionStorage.setItem('vparc.rideStart',String(Date.now()-11*60000))}catch(e){}
+function start(id){const r=store.get('trips',[]);r.push({zone:id,dest:st.dest&&st.dest.n,op:st.op,at:new Date().toISOString()});store.set('trips',r.slice(-20));toast('도착하면 기체를 찍어 반납해요');const z=DATA.zones.find(x=>x.id===id);setTimeout(()=>{location.href=retUrl(z)},700)}
 $('#go3').addEventListener('click',()=>st.zone&&start(st.zone.id));
 document.querySelectorAll('[data-back]').forEach(b=>b.addEventListener('click',()=>{const h=location.hash.slice(1);location.hash=h.startsWith('zone-')&&st.dest?'zones':''}));
 
