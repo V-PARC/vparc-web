@@ -97,6 +97,7 @@ import { loadJudge, makeGuide, grayStats, store as modelStore } from './judge.js
 import { redact } from './redact.js';
 import { makeApi, toScreen, uuid } from './api.js';
 import { loadDetector as loadYolo, DET_VERSION } from './detector.js';
+import { saveRecord } from './debugview.js';
 
 // ---- 설정 ----
 const MP_VER = '0.10.14';
@@ -111,7 +112,10 @@ const HINT = { ...SHOOT_TEXT };
 
 const q = new URLSearchParams(location.search);
 const TEST = q.get('test') === 'img';
+const DEBUG = q.get('debug') === '1';             // 시험 화면(vparc.app/test): 판정 근거를 받아 결과 화면에 표시하고 이 기기에 기록
 const STATIC = q.get('guide') === 'static';         // 예비 시험 A안: AI 안내 없이 고정 문구만 (T14 비교용)               // 카메라 대신 사진으로 시험 (?test=img&src=ok.jpg)
+// 다시 찍기(result.html)에서 같은 설정(시험 세션·debug 등)으로 돌아오게 주소를 남김. new=1은 빼서 같은 반납을 이어 감
+try { const k = new URLSearchParams(location.search); k.delete('new'); sessionStorage.setItem('vparc.shootq', k.toString() ? '?' + k : ''); } catch {}
 const $ = (id) => document.getElementById(id);
 const video = $('video'), testImg = $('testImg');
 const source = () => (TEST ? testImg : video);
@@ -304,7 +308,8 @@ $('btnShutter').addEventListener('click', () => {
   c.getContext('2d').drawImage(source(), 0, 0, c.width, c.height);
   S.live = false; S.shot = c; S.shotBox = S.box ? { ...S.box } : null;
   S.shotGuide = { ready: S.guide.st.current === 'ready', last_reason: API_REASON[S.guide.st.current] || null,
-    elapsed_ms: Math.round(performance.now() - S.startedAt), timeout_15s: performance.now() - S.startedAt > S.guide.cfg.giveUpMs, reason: S.guide.st.current };
+    elapsed_ms: Math.round(performance.now() - S.startedAt), timeout_15s: performance.now() - S.startedAt > S.guide.cfg.giveUpMs, reason: S.guide.st.current,
+    probs: S.guide.st.lastProbs ? { ...S.guide.st.lastProbs } : null };
   c.style.display = 'block'; video.style.visibility = 'hidden'; testImg.style.visibility = 'hidden';
   $('frame').hidden = true; $('barShoot').hidden = true; $('barReview').hidden = false;
   $('title').textContent = '사진 확인';
@@ -331,13 +336,48 @@ async function doRedact(c, boxN) {
   }
   return redact(c, pxBox, { segmenter: seg || null, faceDetector: S.face, personIndex: window.__mockSeg ? undefined : PERSON });
 }
+// ---- 시험 화면용 기록 (DEBUG) ----
+const GUIDE_NAME = { ready: '잘 찍혔어요', pending: '판단 중', none: '기체 없음', cut: '잘림', floor: '바닥 안 보임', blur: '흔들림', light: '역광' };
+function clientDebug(meta, red, liveBox, redetected, T) {
+  const g = S.shotGuide, cfg = S.guide?.cfg || {};
+  const r3 = (o) => o && Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(4) : v]));
+  const lb = liveBox ? { x1: +liveBox.x.toFixed(4), y1: +liveBox.y.toFixed(4), x2: +(liveBox.x + liveBox.w).toFixed(4), y2: +(liveBox.y + liveBox.h).toFixed(4), score: +(liveBox.score || 0).toFixed(3) } : null;
+  const ms = (a, b) => (T[a] && T[b] ? Math.round(T[b] - T[a]) : null);
+  return {
+    detector: { version: DET_VERSION, box_sent: meta.box, box_live: lb, redetected },
+    judgeability: { model: meta.model_versions.judgability, probs: r3(g.probs), state: g.reason, state_name: GUIDE_NAME[g.reason] || g.reason,
+      ready: cfg.ready, ready_frames: cfg.readyN, need: cfg.need, elapsed_ms: g.elapsed_ms, timeout_15s: g.timeout_15s },
+    redaction: { status: meta.redaction.status, rects: (red.rects || []).length, masked_ratio_box: meta.redaction.masked_ratio_box, masked_ratio_ground: meta.redaction.masked_ratio_ground },
+    timing: { redetect: ms('start', 'det'), load: ms(T.det ? 'det' : 'start', 'load'), start_return: ms('load', 'ret'), redact: ms('ret', 'redact') },
+    prefetch: S.prefetch || null, sw: !!navigator.serviceWorker?.controller, ua: navigator.userAgent.slice(0, 160),
+  };
+}
+async function thumbOf(blob, side = 480) {
+  if (!blob) return null;
+  try {
+    const bmp = await createImageBitmap(blob), k = Math.min(1, side / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); bmp.close?.();
+    return c.toDataURL('image/jpeg', 0.7);
+  } catch (e) { return null; }
+}
+async function makeDebugRecord(res, meta, red) {
+  const client = meta.client_debug;
+  client.timing.judge = res._rtt_ms ?? null;
+  return { id: res.judgment_id || meta.request_id, at: new Date().toISOString(), session: q.get('session') || null,
+    result: res.result, receipt: res.receipt_no, reason: res.reason || null, review_reason: res.review_reason || null, review_message: res.review_message || null,
+    versions: res.versions || null, elapsed_ms: res.elapsed_ms ?? null, model_ms: res.model_ms || null,
+    server: res.debug || null, server_note: res.debug ? null : (res.mock ? '모의 판정' : '응답에 debug 없음'),
+    client, thumb: await thumbOf(red.blob) };
+}
 $('btnUse').addEventListener('click', async () => {
   $('btnUse').disabled = true; $('btnRetake').disabled = true; $('busy').hidden = false; $('busyText').textContent = '사진을 확인하고 있어요';
   const T = { start: performance.now() }, lap = (k) => { T[k] = performance.now(); };
   try {
+    const liveBox = S.shotBox ? { ...S.shotBox } : null; let redetected = false;
     if (!S.segmenter && window.__mockSeg === undefined) {
       // 찍은 사진으로 킥보드를 한 번 더 찾아 박스를 맞춤 (화면 박스는 최대 0.3초 전 것)
-      if (S.detector) { try { const b = await detect(S.shot, [S.shot.width, S.shot.height]); if (b !== undefined) S.shotBox = b; } catch (e) { console.warn(e); } }
+      if (S.detector) { try { const b = await detect(S.shot, [S.shot.width, S.shot.height]); if (b !== undefined) { S.shotBox = b; redetected = true; } } catch (e) { console.warn(e); } }
       // 실시간 검출은 끝났으니 먼저 닫아 메모리를 비우고 가림 모델을 올림
       try { S.detector && S.detector.close && S.detector.close(); } catch (e) {}
       S.detector = null;
@@ -363,11 +403,12 @@ $('btnUse').addEventListener('click', async () => {
       model_versions: { detector: DET_VERSION, judgability: S.judge && !S.judge.mock ? 'jdg-v2' : 'rule-v1' },
       ...(geoMeta() ? { location: geoMeta() } : {}),
     };
+    if (DEBUG) { meta.debug = true; meta.client_debug = clientDebug(meta, red, liveBox, redetected, T); }
     stopGeo();
     $('busyText').textContent = '주차 위치를 확인하고 있어요';
     if (!r.returnId) throw new Error(r.startError || '반납 시작 실패');
     const res = await api.judge(r.returnId, meta, red.blob);
-    lap('judge');
+    lap('judge'); res._rtt_ms = Math.round(T.judge - T.redact);
     r.attempt = attempt; saveSession(r);
     const mins = Math.max(1, Math.round((Date.now() - r.startedAt) / 60000));
     const screen = toScreen(res, { returnId: r.returnId, attempt, time: fmtTime(new Date()), place: r.place, photoUrl,
@@ -376,6 +417,10 @@ $('btnUse').addEventListener('click', async () => {
     const ms = (a, b) => (T[a] && T[b] ? Math.round(T[b] - T[a]) : 0);
     screen.timing = `재검출 ${ms('start', 'det')}ms · 가림 준비 ${ms(T.det ? 'det' : 'start', 'load')}ms · 반납 시작 ${ms('load', 'ret')}ms · 가림 ${ms('ret', 'redact')}ms · 판정 ${ms('redact', 'judge')}ms`
       + ` · 미리 받기 ${S.prefetch === 'done' ? '완료' : (S.prefetch || '안 됨')} · 저장 ${navigator.serviceWorker?.controller ? '켜짐' : '꺼짐'}`;
+    if (DEBUG) {
+      const rec = await makeDebugRecord(res, meta, red);
+      saveRecord(rec); screen.debugRec = rec;
+    }
     sessionStorage.setItem('vparc.result', JSON.stringify(screen));
     location.href = 'result.html?from=shoot';
   } catch (e) {

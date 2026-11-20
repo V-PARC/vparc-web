@@ -183,7 +183,7 @@ async function render(d) {
 // ---- 버튼: 반납 종료(finish) 또는 다시 찍기 ----
 const api = makeApi();
 const OUTCOME = { ok: 'SUITABLE', bad: 'UNSUITABLE_ACCEPTED', review: 'REVIEW' };
-function retake() { location.href = 'shoot.html'; }
+function retake() { let s = ''; try { s = sessionStorage.getItem('vparc.shootq') || ''; } catch {} location.href = 'shoot.html' + s; }
 async function finish(d) {
   const btns = [...document.querySelectorAll('#btns button')]; btns.forEach(b => b.disabled = true);
   let res = null, err = null;
@@ -214,6 +214,26 @@ function wire(d) {
 document.querySelector('.back').onclick = () => (live ? retake() : history.back());
 
 render(decision).then(() => wire(decision));
+if (live && live.debugRec) {   // 시험 화면(vparc.app/test): 판정 근거 (결과 화면은 스크롤이 없어 전체 화면 창으로 띄움)
+  const open = document.createElement('button');
+  open.textContent = '판정 근거 보기 (확률·기준·결합 순서)';
+  open.style.cssText = 'display:block;width:100%;margin:10px 0 0;padding:11px;border-radius:12px;border:1.5px solid #1f6feb;background:transparent;color:#1f6feb;font:700 14px/1 inherit;cursor:pointer';
+  $('btns').parentNode.appendChild(open);
+  const pane = document.createElement('div');
+  pane.style.cssText = 'position:fixed;inset:0;z-index:50;overflow:auto;-webkit-overflow-scrolling:touch;padding:calc(env(safe-area-inset-top) + 12px) 16px 32px';
+  pane.className = 'dv'; pane.hidden = true;
+  const bar = document.createElement('div');
+  bar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+  bar.innerHTML = '<b style="font-size:17px">판정 근거</b><span><a href="test/" style="font-size:13px;margin-right:14px;color:inherit">시험 기록 전체</a><button id="dvClose" style="font:700 14px/1 inherit;padding:8px 12px;border-radius:10px;border:0;background:#e5e7eb;color:#111">닫기</button></span>';
+  const body = document.createElement('div');
+  pane.append(bar, body); document.body.appendChild(pane);
+  let done = false;
+  open.onclick = async () => {
+    if (!done) { const { renderDebug } = await import('./debugview.js'); renderDebug(live.debugRec, body); pane.classList.add('dv'); done = true; }
+    pane.hidden = false;
+  };
+  bar.querySelector('#dvClose').onclick = () => { pane.hidden = true; };
+}
 if (live && live.timing) {   // 촬영 화면 단계별 시간 (shoot.html)
   const p = el('p', null, live.timing); p.style.cssText = 'font-size:11px;opacity:.55;text-align:center;margin:10px 0 0;word-break:keep-all';
   $('btns').parentNode.appendChild(p);

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>V-PARC 시험 화면</title>
+<meta name="description" content="V-PARC PoC 시험: 촬영부터 판정까지 휴대폰 분류기와 서버 판정기의 확률·기준·결합 과정을 바로 확인하고 기록을 남긴다">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#16181d; --muted:#6b7280; --line:#e5e7eb; --accent:#1f6feb; --accent-text:#fff;
+          --ok:#1a7f37; --bad:#cf222e; --warn:#9a6700; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1115; --card:#16181d; --text:#e8eaee; --muted:#9aa2ae; --line:#2a2f37; --accent:#4c8dff; --accent-text:#0b0d10;
+            --ok:#3fb950; --bad:#f85149; --warn:#d29922; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 "Pretendard Variable",-apple-system,"Apple SD Gothic Neo",sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:20px 16px 48px; }
+  h1 { font-size:22px; margin:4px 0 4px; }
+  .sub { color:var(--muted); margin:0 0 16px; font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input, select { width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .btn { display:block; width:100%; margin-top:14px; padding:14px; border:0; border-radius:12px; background:var(--accent); color:var(--accent-text); font:700 16px/1 inherit; cursor:pointer; }
+  .btn.sec { background:transparent; color:var(--accent); border:1px solid var(--line); font-weight:600; font-size:14px; padding:10px; margin-top:0; }
+  .err { color:var(--bad); font-size:13px; min-height:1em; margin-top:6px; }
+  .tools { display:flex; gap:8px; margin:8px 0 12px; }
+  .item { background:var(--card); border:1px solid var(--line); border-radius:14px; margin-bottom:10px; overflow:hidden; }
+  .item > button { all:unset; display:flex; gap:10px; align-items:center; width:100%; padding:12px 14px; cursor:pointer; box-sizing:border-box; }
+  .item .th { width:52px; height:52px; border-radius:8px; object-fit:cover; background:var(--line); flex:none; }
+  .item .meta { flex:1; min-width:0; font-size:13px; color:var(--muted); }
+  .item .meta b { color:var(--text); font-size:15px; margin-right:6px; }
+  .item .body { padding:0 14px 14px; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; font-weight:700; }
+  .tag.SUITABLE { color:var(--ok); background:color-mix(in srgb,var(--ok) 15%,transparent); }
+  .tag.UNSUITABLE { color:var(--bad); background:color-mix(in srgb,var(--bad) 15%,transparent); }
+  .tag.REVIEW { color:var(--warn); background:color-mix(in srgb,var(--warn) 15%,transparent); }
+  .empty { color:var(--muted); text-align:center; padding:24px 0; }
+  .note { font-size:12.5px; color:var(--muted); }
+  code { font-size:12px; background:var(--line); padding:1px 5px; border-radius:5px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>V-PARC 시험 화면</h1>
+  <p class="sub">실제 촬영 화면 그대로 반납을 해 보고, 휴대폰 분류기와 서버 판정기가 어떤 확률로 어떻게 판정했는지 결과 화면에서 바로 봅니다. 기록은 시험 세션으로 분리되어 실제 집계에서 빠집니다.</p>
+
+  <section class="card">
+    <div class="two">
+      <div><label for="sess">시험 세션</label><input id="sess" value="P00-A-1" autocomplete="off" inputmode="latin" spellcheck="false"></div>
+      <div><label for="op">운영사</label><select id="op"><option value="BEAM">빔</option><option value="SWING">스윙</option><option value="GCOO">지쿠</option></select></div>
+    </div>
+    <div class="two">
+      <div><label for="zone">반납 위치</label><select id="zone"><option value="1">주차 구역 안</option><option value="0">구역 밖</option></select></div>
+      <div><label for="guide">촬영 안내</label><select id="guide"><option value="ai">AI 안내 (B안)</option><option value="static">고정 문구 (A안)</option></select></div>
+    </div>
+    <label for="place">장소 메모 (결과 화면 표시용)</label><input id="place" value="시험 장소" maxlength="40">
+    <div class="err" id="err"></div>
+    <button class="btn" id="go">촬영 시작</button>
+    <p class="note">세션 형식은 <code>P00-A-1</code>처럼 P+두 자리, A/B, 숫자 한 자리입니다. 개발 시험은 P00, 사용자 시험 참가자는 P01부터 쓰세요. 누를 때마다 새 반납으로 시작합니다.</p>
+  </section>
+
+  <h1 style="font-size:18px;margin-top:22px">이 기기의 시험 기록</h1>
+  <div class="tools">
+    <button class="btn sec" id="dl">JSON 내려받기</button>
+    <button class="btn sec" id="clr">기록 지우기</button>
+  </div>
+  <div id="list"></div>
+  <p class="note">여기 목록은 이 휴대폰에만 저장된 사본(최근 30건)입니다. 서버에는 같은 내용이 <code>/data/logs/judge_debug.jsonl</code>에 한 줄씩 남고(위치 좌표 제외), 판정 기록은 DB와 관리자 API(<code>/v1/admin/records?test_session=P00</code>)에서 볼 수 있습니다.</p>
+</main>
+<script type="module">
+import { renderDebug, loadLog, clearLog } from '../debugview.js';
+const $ = (id) => document.getElementById(id);
+const RES = { SUITABLE: '적합', UNSUITABLE: '부적합', REVIEW: '추가 확인' };
+const PREF = 'vparc.testform';
+
+try { const f = JSON.parse(localStorage.getItem(PREF) || 'null'); if (f) for (const k of ['sess', 'op', 'zone', 'guide', 'place']) if (f[k] != null) $(k).value = f[k]; } catch {}
+
+$('go').onclick = () => {
+  const sess = $('sess').value.trim().toUpperCase();
+  if (!/^P\d{2}-[AB]-\d$/.test(sess)) { $('err').textContent = '시험 세션은 P00-A-1 형식이어야 해요'; return; }
+  const f = { sess, op: $('op').value, zone: $('zone').value, guide: $('guide').value, place: $('place').value.trim() || '시험 장소' };
+  try { localStorage.setItem(PREF, JSON.stringify(f)); } catch {}
+  try { sessionStorage.removeItem('vparc.return'); sessionStorage.removeItem('vparc.result'); } catch {}
+  const p = new URLSearchParams({ debug: '1', new: '1', session: f.sess, op: f.op, in_zone: f.zone, place: f.place });
+  if (f.guide === 'static') p.set('guide', 'static');
+  location.href = '../shoot.html?' + p;
+};
+
+const top = (rec) => {
+  const it = rec.server?.items?.filter(i => i.used_in_decision && i.prob != null).sort((a, b) => b.prob - a.prob)[0];
+  return it ? `${it.name} ${it.prob.toFixed(2)}` : (rec.review_reason || '');
+};
+function draw() {
+  const list = loadLog(), L = $('list'); L.innerHTML = '';
+  if (!list.length) { L.innerHTML = '<div class="empty">아직 기록이 없어요. 위에서 촬영을 시작하세요.</div>'; return; }
+  const open = location.hash.slice(1);
+  for (const rec of list) {
+    const d = document.createElement('div'); d.className = 'item';
+    const b = document.createElement('button');
+    b.innerHTML = `${rec.thumb ? `<img class="th" src="${rec.thumb}" alt="">` : '<div class="th"></div>'}
+      <div class="meta"><div><span class="tag ${rec.result}">${RES[rec.result] || rec.result}</span> <b>${rec.receipt || '-'}</b></div>
+      <div>${new Date(rec.at).toLocaleString('ko-KR')} · ${rec.session || ''} · ${top(rec)}</div></div><span aria-hidden="true">▾</span>`;
+    const body = document.createElement('div'); body.className = 'body'; body.hidden = true;
+    b.onclick = () => { body.hidden = !body.hidden; if (!body.hidden && !body.dataset.done) { renderDebug(rec, body); body.dataset.done = 1; } };
+    d.append(b, body); L.appendChild(d);
+    if (open && rec.id === open) b.click();
+  }
+}
+$('dl').onclick = () => {
+  const blob = new Blob([JSON.stringify(loadLog(), null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `vparc-test-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$('clr').onclick = () => { if (loadLog().length && confirm('이 기기의 시험 기록을 지울까요? 서버 로그는 그대로예요.')) { clearLog(); draw(); } };
+draw();
+</script>
+</body>
+</html>
