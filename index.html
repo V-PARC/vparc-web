@@ -116,7 +116,8 @@ h2{font-size:15px;font-weight:700;margin:22px 0 10px}
 .rec{font-size:12px;color:var(--ink3);margin:16px 0 4px;line-height:1.6}
 .toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--btn);color:var(--btnfg);font-size:14px;font-weight:600;padding:11px 16px;border-radius:999px;max-width:calc(100% - 48px);z-index:20;box-shadow:0 4px 16px var(--shade)}
 @media (prefers-reduced-motion:no-preference){.scr{animation:in .18s ease-out}@keyframes in{from{opacity:.4;transform:translateY(6px)}to{opacity:1;transform:none}}}
-#kmap{position:absolute;inset:0}
+#kmap{position:absolute;inset:0;z-index:0}
+.mapwrap .back,.maphint{z-index:10}
 .kpin{width:28px;height:28px;border-radius:14px;background:var(--pin);color:var(--pinfg);border:2px solid #fff;display:grid;place-items:center;font:700 13px/1 var(--font);box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer;transform:translateY(14px)}
 .kdot{width:10px;height:10px;border-radius:5px;background:#9aa0a6;border:1.5px solid #fff;cursor:pointer;transform:translateY(5px)}
 .kdest{background:var(--pin);color:var(--pinfg);font:700 11px/1 var(--font);padding:5px 8px;border-radius:5px;position:relative;margin-bottom:8px}
