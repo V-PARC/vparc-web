@@ -22,7 +22,8 @@ h1{font-size:28px;font-weight:800;margin:18px 0 18px;letter-spacing:-.03em}
 .ride b{display:block;font-size:15px}.ride span{display:block;font-size:13px;color:var(--ink3);margin-top:2px}
 .badge{margin-left:auto;background:var(--ok);color:#fff;font-size:11.5px;font-weight:700;padding:4px 8px;border-radius:6px;flex-shrink:0}
 .ex img,.zone img{width:64px;height:64px;border-radius:10px;object-fit:cover;flex-shrink:0;background:var(--soft2)}
-.ex b{display:block;font-size:14.5px;margin-bottom:3px}.ex p{margin:0;font-size:12.5px;color:var(--ink2);line-height:1.45}
+.ex b{display:block;font-size:14.5px;margin-bottom:5px}
+.exl{display:block;margin-top:2px}.exl em{font-style:normal;font-weight:700;color:var(--ink);margin-right:6px}.ex p{margin:0;font-size:12.5px;color:var(--ink2);line-height:1.45}
 .ex a,.zone a{color:var(--ink);font-size:12.5px;font-weight:700;text-decoration:none}
 h2{font-size:15px;font-weight:700;margin:20px 0 10px;display:flex;align-items:center}
 h2 a{margin-left:auto;font-size:13px;font-weight:600;color:var(--ink2);text-decoration:none}
@@ -76,16 +77,20 @@ $('tabHome').href='return.html?'+p;
 let t0=Date.now(); try{t0=+sessionStorage.getItem('vparc.rideStart')||t0}catch(e){}
 function usage(){const m=Math.max(1,Math.round((Date.now()-t0)/60000));$('usage').textContent=`${m}분 · ${(1000+150*m).toLocaleString('ko-KR')}원`}
 usage(); setInterval(usage,30000);
+function setEx(a,b){const e=$('exText');e.textContent='';for(const [k,v] of [['세우기',a],['찍기',b]]){const d=document.createElement('span');d.className='exl';const s=document.createElement('em');s.textContent=k;d.append(s,v);e.append(d)}}
 const zone=p.get('zone');
 if(zone){
   const ph=`photos/${p.get('photo')}.jpg`;
   $('exImg').src=ph; $('zImg').src=ph;
-  $('exText').textContent=`${p.get('caution')}. ${p.get('tip')} 찍어 주세요.`;
+  // 짧게 두 줄: 세우는 곳 / 찍는 법
+  const SHORT={'기체 옆으로 두세 걸음 물러나 바퀴 두 개와 바닥이 다 보이게':'옆에서 바퀴 두 개와 바닥이 보이게','기체 앞에서 두세 걸음 물러나 양옆 바닥이 보이게':'앞에서 양옆 바닥이 보이게','기체 옆에 서서 내려다보되 바퀴 두 개가 다 들어오게':'위에서 바퀴 두 개가 다 보이게'};
+  const where=(p.get('caution')||'').replace(/\s*세워 주세요\.?$/,'').replace(/\s*주세요\.?$/,'');
+  setEx(where, SHORT[p.get('tip')]||'옆에서 바퀴 두 개와 바닥이 보이게');
   $('exLink').href='./#zone-'+zone.toLowerCase();
   $('zName').textContent=p.get('place')||'확인 구역';
   $('zSub').textContent=p.get('side')||'';
 }else{
-  $('exText').textContent='건물·화단 쪽 가장자리에 나란히 세우고, 두세 걸음 물러나 바퀴 두 개와 바닥이 다 보이게 찍어 주세요.';
+  setEx('건물·화단 쪽 가장자리에 나란히','옆에서 바퀴 두 개와 바닥이 보이게');
   $('exLink').href='./';
   $('zImg').hidden=true; $('zName').textContent=p.get('dest')?`${p.get('dest')} 근처 · 구역 밖`:'고른 구역 없음';
   $('zSub').textContent='구역 밖 반납도 같은 기준으로 판정해요';
