@@ -273,15 +273,15 @@ function drawSvgMap(){
 }
 // ---- 카카오 지도 (실패하면 위 그림 지도로 대신) ----
 const KAKAO_KEY='b174edef8b8810b085987f86b671837b';
-let KM=null, kmFail=false, kmWait=null;
+let KM=null, kmFail=false, kmWait=null, kmTries=0;
 function kakaoReady(){
   if(window.kakao&&kakao.maps&&kakao.maps.LatLng) return Promise.resolve();
   if(kmWait) return kmWait;
   kmWait=new Promise((ok,bad)=>{const s=document.createElement('script');
     s.src=`https://dapi.kakao.com/v2/maps/sdk.js?appkey=${KAKAO_KEY}&autoload=false`;
-    const t=setTimeout(()=>bad(new Error('timeout')),6000);
+    const t=setTimeout(()=>bad(new Error('시간 초과')),15000);
     s.onload=()=>{try{kakao.maps.load(()=>{clearTimeout(t);ok()})}catch(e){clearTimeout(t);bad(e)}};
-    s.onerror=()=>{clearTimeout(t);bad(new Error('sdk'))}; document.head.appendChild(s)});
+    s.onerror=()=>{clearTimeout(t);kmWait=null;bad(new Error('SDK 불러오기 실패'))}; document.head.appendChild(s)});
   return kmWait;
 }
 function kmPin(html,pos,z,onclick){const el=document.createElement('div');el.innerHTML=html;const n=el.firstElementChild;if(onclick)n.addEventListener('click',e=>{e.stopPropagation();onclick()});
@@ -300,7 +300,7 @@ function drawMap(){
       kmPin('<div class="kdot"></div>',new kakao.maps.LatLng(z.lat,z.lon),1,()=>{location.hash='zone-'+z.id.toLowerCase()})}
     st.cands.forEach((o,i)=>kmPin(`<div class="kpin">${i+1}</div>`,new kakao.maps.LatLng(o.z.lat,o.z.lon),3,()=>{location.hash='zone-'+o.z.id.toLowerCase()}));
     kmPin('<div class="kdest">목적지</div>',C,4,null);
-  }).catch(e=>{console.warn('카카오 지도 실패, 그림 지도로 대신',e);kmFail=true;$('#kmap').hidden=true;$('#map').style.visibility='';drawSvgMap()});
+  }).catch(e=>{console.warn('카카오 지도 실패, 그림 지도로 대신',e);kmTries=(window.kmTries||0)+1;window.kmTries=kmTries;if(kmTries>=2)kmFail=true;kmWait=null;$('#kmap').hidden=true;$('#map').style.visibility='';drawSvgMap();const hint=document.querySelector('.maphint');if(hint)hint.textContent='카카오 지도 못 불러옴('+(e&&e.message||e)+')';});
 }
 function renderZones(){
   if(!st.dest){location.hash='';return}
