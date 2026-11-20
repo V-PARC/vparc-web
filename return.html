@@ -35,6 +35,10 @@ h2 a{margin-left:auto;font-size:13px;font-weight:600;color:var(--ink2);text-deco
 .tabs a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;color:var(--ink3);text-decoration:none;min-width:60px}
 .tabs a[aria-current]{color:var(--ink);font-weight:700}
 .tabs svg{width:22px;height:22px}
+
+/* 한글은 단어 단위로 줄바꿈 (한두 글자만 다음 줄로 넘어가지 않게) */
+body{word-break:keep-all;overflow-wrap:break-word}
+p,span,b,dd,li,h1,h2,h3,button,a,div{text-wrap:pretty}
 </style>
 </head>
 <body>
