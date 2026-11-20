@@ -214,6 +214,10 @@ function wire(d) {
 document.querySelector('.back').onclick = () => (live ? retake() : history.back());
 
 render(decision).then(() => wire(decision));
+if (live && live.timing) {   // 촬영 화면 단계별 시간 (shoot.html)
+  const p = el('p', null, live.timing); p.style.cssText = 'font-size:11px;opacity:.55;text-align:center;margin:10px 0 0;word-break:keep-all';
+  $('btns').parentNode.appendChild(p);
+}
 addEventListener('resize', () => render(decision).then(() => wire(decision)));
 window.render = render;   // 판정 API 연결용
 </script>

@@ -74,7 +74,7 @@
       <button id="btnStart">카메라 켜기</button>
       <div style="font-size:13px;color:#8a8a8a">원본 사진과 위치는 휴대폰 밖으로 나가지 않아요</div>
     </div>
-    <div class="busy" id="busy" hidden><div class="spin"></div><div id="busyText">사람을 가리고 있어요</div></div>
+    <div class="busy" id="busy" hidden><div class="spin"></div><div id="busyText">사진을 확인하고 있어요</div></div>
   </div>
 
   <div class="bottom" id="barShoot">
@@ -116,6 +116,8 @@ const api = makeApi();
 const S = { detector: null, segmenter: null, face: null, judge: null, guide: null, live: false, busy: false, lastCheck: 0, lastTs: 0,
   box: null, boxScore: 0, mpFailed: false, shot: null, shotBox: null, startedAt: 0 };
 window.__vparc = S;
+// 외부 wasm·가림 모델을 휴대폰에 한 번만 받아 두는 서비스 워커 (sw.js). 실패해도 동작은 그대로
+if ('serviceWorker' in navigator && self.isSecureContext) navigator.serviceWorker.register('./sw.js').catch(e => console.warn('sw', e));
 
 // ---- 휴대폰 위치 (서버가 횡단보도·정류소·어린이보호구역 근처인지 보고 기준만 엄격하게 함. 서버는 좌표를 저장하지 않음) ----
 // 거부·실패해도 판정은 그대로. 찍기 직전 1분 안의 위치만 보냄
@@ -202,6 +204,18 @@ async function loadRedactors() {                    // 셔터 전에 미리 받�
   try { S.face = await make('FaceDetector', { baseOptions: { modelAssetPath: MP_FACE }, runningMode: 'IMAGE', minDetectionConfidence: 0.4 }); }
   catch (e) { console.warn('얼굴 검출 모델 실패', e); }
 }
+// 촬영 중에 가림용 파일(MediaPipe wasm·모델)을 내려받기만 해 둠. 모델 생성(메모리 큼)은 지금처럼 반납 때 (11/17 아이폰 메모리 대책 유지)
+// 스트림으로 읽고 버려서 메모리를 거의 안 씀. 받은 파일은 서비스 워커가 저장하고, 없으면 HTTP 캐시에 남음
+async function prefetchRedactors() {
+  if (window.__mockSeg !== undefined || S.prefetch) return;
+  S.prefetch = 'loading';
+  const drain = async (u) => { const r = await fetch(u); const rd = r.body.getReader(); while (!(await rd.read()).done) {} };
+  try {
+    const { fs } = await mp();
+    await Promise.all([fs.wasmLoaderPath, fs.wasmBinaryPath, MP_SEG, MP_FACE].map(drain));
+    S.prefetch = 'done';
+  } catch (e) { console.warn('가림 파일 미리 받기 실패', e); S.prefetch = null; }
+}
 async function detect(src = source(), size = srcSize()) {
   const [vw, vh] = size; if (!vw) return null;
   if (window.__mockDets) {
@@ -265,7 +279,7 @@ $('btnStart').addEventListener('click', async () => {
   if (!S.guide) S.guide = makeGuide(S.judge?.meta);
   beginLive();
   $('btnShutter').disabled = false;
-  loadDetector();                                   // 사람 가림 모델은 '이 사진으로 반납'을 누를 때 받음 (아이폰 메모리 부족 대책)
+  loadDetector().then(() => setTimeout(prefetchRedactors, 1000));   // 사람 가림 모델은 '이 사진으로 반납'을 누를 때 받음 (아이폰 메모리 부족 대책)
 });
 // 페이지를 떠날 때 모델 메모리를 돌려줌: 아이폰 사파리는 새로고침해도 메모리를 늦게 비워서 다시 열면 Out of memory가 남 (11/17)
 window.addEventListener('pagehide', () => {
@@ -314,7 +328,8 @@ async function doRedact(c, boxN) {
   return redact(c, pxBox, { segmenter: seg || null, faceDetector: S.face, personIndex: window.__mockSeg ? undefined : PERSON });
 }
 $('btnUse').addEventListener('click', async () => {
-  $('btnUse').disabled = true; $('btnRetake').disabled = true; $('busy').hidden = false; $('busyText').textContent = '사람을 가리고 있어요';
+  $('btnUse').disabled = true; $('btnRetake').disabled = true; $('busy').hidden = false; $('busyText').textContent = '사진을 확인하고 있어요';
+  const T = { start: performance.now() }, lap = (k) => { T[k] = performance.now(); };
   try {
     if (!S.segmenter && window.__mockSeg === undefined) {
       // 찍은 사진으로 킥보드를 한 번 더 찾아 박스를 맞춤 (화면 박스는 최대 0.3초 전 것)
@@ -322,10 +337,14 @@ $('btnUse').addEventListener('click', async () => {
       // 실시간 검출은 끝났으니 먼저 닫아 메모리를 비우고 가림 모델을 올림
       try { S.detector && S.detector.close && S.detector.close(); } catch (e) {}
       S.detector = null;
+      lap('det');
       await loadRedactors();
     }
+    lap('load');
     const r = await ensureReturn();
+    lap('ret');
     const red = await doRedact(S.shot, S.shotBox);
+    lap('redact');
     // 가린 사진으로 화면에 보여 줄 것 (가림 실패면 사진 없음)
     const photoUrl = red.blob ? await new Promise(ok => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsDataURL(red.blob); }) : null;
     const attempt = (r.attempt || 0) + 1;
@@ -344,10 +363,15 @@ $('btnUse').addEventListener('click', async () => {
     $('busyText').textContent = '주차 위치를 확인하고 있어요';
     if (!r.returnId) throw new Error(r.startError || '반납 시작 실패');
     const res = await api.judge(r.returnId, meta, red.blob);
+    lap('judge');
     r.attempt = attempt; saveSession(r);
     const mins = Math.max(1, Math.round((Date.now() - r.startedAt) / 60000));
     const screen = toScreen(res, { returnId: r.returnId, attempt, time: fmtTime(new Date()), place: r.place, photoUrl,
       usage: { min: mins, fee: 1000 + 150 * mins }, lastReason: S.shotGuide.reason });
+    // 단계별 시간 (결과 화면 아래에 작게 표시: 아이폰에서 어디가 느린지 확인용)
+    const ms = (a, b) => (T[a] && T[b] ? Math.round(T[b] - T[a]) : 0);
+    screen.timing = `재검출 ${ms('start', 'det')}ms · 가림 준비 ${ms(T.det ? 'det' : 'start', 'load')}ms · 반납 시작 ${ms('load', 'ret')}ms · 가림 ${ms('ret', 'redact')}ms · 판정 ${ms('redact', 'judge')}ms`
+      + ` · 미리 받기 ${S.prefetch === 'done' ? '완료' : (S.prefetch || '안 됨')} · 저장 ${navigator.serviceWorker?.controller ? '켜짐' : '꺼짐'}`;
     sessionStorage.setItem('vparc.result', JSON.stringify(screen));
     location.href = 'result.html?from=shoot';
   } catch (e) {
