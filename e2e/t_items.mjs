@@ -183,13 +183,17 @@ async function shoot(api, { seg = 'person', route = null, gps = true, extra = ''
     const load = async (b64) => { const bmp = await createImageBitmap(await (await fetch('data:image/jpeg;base64,' + b64)).blob());
       const c = new OffscreenCanvas(bmp.width, bmp.height), g = c.getContext('2d'); g.drawImage(bmp, 0, 0); return { g, w: bmp.width, h: bmp.height }; };
     const mean = ({ g, w, h }, x0, y0, x1, y1) => { const d = g.getImageData(x0 * w, y0 * h, (x1 - x0) * w, (y1 - y0) * h).data; let s = 0, s2 = 0; const n = d.length / 4;
-      for (let i = 0; i < d.length; i += 4) { const v = (d[i] + d[i + 1] + d[i + 2]) / 3; s += v; s2 += v * v; } const m = s / n; return { mean: +m.toFixed(1), std: +Math.sqrt(Math.max(0, s2 / n - m * m)).toFixed(1) }; };
+      for (let i = 0; i < d.length; i += 4) { const v = (d[i] + d[i + 1] + d[i + 2]) / 3; s += v; s2 += v * v; } const m = s / n;
+      // 가장자리 세기: 옆 픽셀과의 밝기 차 평균. 흐리면 크게 줄어듦
+      const rw = Math.round((x1 - x0) * w); let e = 0, ne = 0;
+      for (let i = 4; i < d.length; i += 4) { if ((i / 4) % rw === 0) continue; e += Math.abs((d[i] + d[i + 1] + d[i + 2]) - (d[i - 4] + d[i - 3] + d[i - 2])) / 3; ne++; }
+      return { mean: +m.toFixed(1), std: +Math.sqrt(Math.max(0, s2 / n - m * m)).toFixed(1), edge: +(e / ne).toFixed(2) }; };
     const S = await load(sent), O = await load(orig);
     return { sent_size: [S.w, S.h], orig_size: [O.w, O.h], person_area_sent: mean(S, 0.02, 0.02, 0.18, 0.35), person_area_orig: mean(O, 0.02, 0.02, 0.18, 0.35),
       scooter_area_sent: mean(S, 0.35, 0.45, 0.65, 0.8), scooter_area_orig: mean(O, 0.35, 0.45, 0.65, 0.8) };
   }, { sent: photo.toString('base64'), orig: ORIG.toString('base64') });
-  // 가린 칸은 #111(밝기 17) 한 색이라 표준편차가 거의 0. 원본은 무늬가 있어 편차가 큼. 킥보드 칸은 원본과 같아야 함
-  const masked = Math.abs(px.person_area_sent.mean - 17) < 4 && px.person_area_sent.std < 3 && px.person_area_orig.std > 5
+  // 가린 칸은 강한 흐림이라 가장자리 세기(옆 픽셀과의 차)가 원본의 1/5 아래로 줄어듦. 킥보드 칸은 원본과 같아야 함
+  const masked = px.person_area_sent.edge < px.person_area_orig.edge / 5
     && Math.abs(px.scooter_area_sent.mean - px.scooter_area_orig.mean) < 6;
   const origBytesSent = reqs.some(x => x.body && x.body.includes(ORIG.subarray(200, 264)));
   record('T7', '전송 사진: 행인 영역 가림, 원본 바이트·EXIF 없음', masked && !hasExif(photo) && !origBytesSent,
@@ -222,9 +226,10 @@ async function shoot(api, { seg = 'person', route = null, gps = true, extra = ''
   const storedPhoto = /data:image\/jpeg;base64,([A-Za-z0-9+/=]+)/.exec(storeText)?.[1];
   const storedMasked = storedPhoto ? await r.page.evaluate(async (b64) => { const bmp = await createImageBitmap(await (await fetch('data:image/jpeg;base64,' + b64)).blob());
     const c = new OffscreenCanvas(bmp.width, bmp.height), g = c.getContext('2d'); g.drawImage(bmp, 0, 0);
-    const d = g.getImageData(0.02 * bmp.width, 0.02 * bmp.height, 0.16 * bmp.width, 0.33 * bmp.height).data; let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i]; return s / (d.length / 4); }, storedPhoto) : null;
-  record('T7', '브라우저 저장소: 좌표 없음, 저장된 사진은 가린 사진', !coordStrs.some(s => storeText.includes(s)) && (storedMasked === null || storedMasked < 25),
-    { session_keys: Object.keys(r.state.ss), local_keys: Object.keys(r.state.ls), coords_found: coordStrs.filter(s => storeText.includes(s)), stored_photo_person_area_mean: storedMasked });
+    const d = g.getImageData(0.02 * bmp.width, 0.02 * bmp.height, 0.16 * bmp.width, 0.33 * bmp.height).data; let s = 0, s2 = 0; const n = d.length / 4;
+    for (let i = 0; i < d.length; i += 4) { const v = (d[i] + d[i + 1] + d[i + 2]) / 3; s += v; s2 += v * v; } const m = s / n; return +Math.sqrt(Math.max(0, s2 / n - m * m)).toFixed(1); }, storedPhoto) : null;
+  record('T7', '브라우저 저장소: 좌표 없음, 저장된 사진은 가린 사진', !coordStrs.some(s => storeText.includes(s)) && (storedMasked === null || storedMasked < px.person_area_orig.std),
+    { session_keys: Object.keys(r.state.ss), local_keys: Object.keys(r.state.ls), coords_found: coordStrs.filter(s => storeText.includes(s)), stored_photo_person_area_std: storedMasked });
   await r.ctx.close();
   api.stop();
 }

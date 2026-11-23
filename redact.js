@@ -43,7 +43,26 @@ export function coverLoss(rects, box, W, H) {
   return { box: b, floor: f, lost: b >= BOX_LOSS || f >= FLOOR_LOSS };
 }
 
-// 실제 가림: MediaPipe ImageSegmenter(사람)와 FaceDetector 결과를 받아 불투명하게 칠한다
+// 강한 흐림: 영역을 짧은 변 BLUR_CELLS칸으로 줄였다가 부드럽게 다시 키운다(두 번).
+// 얼굴 하나가 몇 칸 안에 뭉개져 알아볼 수 없고, ctx.filter(blur)를 못 쓰는 iOS 17 사파리에서도 똑같이 동작한다.
+export const BLUR_CELLS = 8;
+export function blurRect(g, r, cells = BLUR_CELLS) {
+  const x = Math.floor(r.x), y = Math.floor(r.y), w = Math.ceil(r.w), h = Math.ceil(r.h);
+  if (w < 2 || h < 2) return;
+  const k = cells / Math.min(w, h), sw = Math.max(2, Math.round(w * k)), sh = Math.max(2, Math.round(h * k));
+  const t = document.createElement('canvas'); t.width = sw; t.height = sh;
+  const tg = t.getContext('2d'); tg.imageSmoothingEnabled = true; tg.imageSmoothingQuality = 'high';
+  tg.drawImage(g.canvas, x, y, w, h, 0, 0, sw, sh);
+  // 한 번 더 줄였다 키워 칸 경계(모자이크 느낌)를 없앰
+  const t2 = document.createElement('canvas'); t2.width = Math.max(2, sw >> 1); t2.height = Math.max(2, sh >> 1);
+  const t2g = t2.getContext('2d'); t2g.imageSmoothingEnabled = true; t2g.imageSmoothingQuality = 'high';
+  t2g.drawImage(t, 0, 0, t2.width, t2.height);
+  tg.clearRect(0, 0, sw, sh); tg.drawImage(t2, 0, 0, sw, sh);
+  g.save(); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(t, 0, 0, sw, sh, x, y, w, h); g.restore();
+}
+
+// 실제 가림: MediaPipe ImageSegmenter(사람)와 FaceDetector 결과를 받아 강하게 흐리게 한다
 // personIndex: 분할 모델에서 사람 클래스 번호 (DeepLab v3 = 15). 없으면 0보다 큰 값을 모두 사람으로 봄
 export async function redact(src, box, { segmenter, faceDetector, personIndex } = {}) {
   const W = src.width, H = src.height;
@@ -65,8 +84,7 @@ export async function redact(src, box, { segmenter, faceDetector, personIndex } 
     return { lost: true, failed: true, reason: '가림 실패', blob: null };        // S6: 사진 없이 접수
   }
   rects = rects.map(r => expand(r, W, H));
-  g.fillStyle = '#111';
-  for (const r of rects) g.fillRect(r.x, r.y, r.w, r.h);
+  for (const r of rects) blurRect(g, r);
   const loss = coverLoss(rects, box, W, H);
   const blob = loss.lost ? null : await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
   return { ...loss, rects, canvas: c, blob };

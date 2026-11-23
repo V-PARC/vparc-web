@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>V-PARC 가림 검증</title>
+<meta name="description" content="사람 가림(A3) 검증: 앱과 같은 모델·설정으로 사진을 가려 원본과 나란히 보고, 판독 결과를 CSV로 내보낸다(T6). 사진은 이 브라우저 밖으로 나가지 않는다.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#16181d; --muted:#6b7280; --line:#e5e7eb; --accent:#1f6feb; --accent-text:#fff;
+          --ok:#1a7f37; --bad:#cf222e; --warn:#9a6700; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1115; --card:#16181d; --text:#e8eaee; --muted:#9aa2ae; --line:#2a2f37; --accent:#4c8dff; --accent-text:#0b0d10;
+            --ok:#3fb950; --bad:#f85149; --warn:#d29922; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 "Pretendard Variable",-apple-system,"Apple SD Gothic Neo",sans-serif; word-break:keep-all; }
+  main { max-width:960px; margin:0 auto; padding:20px 16px 64px; }
+  h1 { font-size:22px; margin:4px 0; }
+  .sub { color:var(--muted); margin:0 0 16px; font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:0 0 4px; }
+  input[type=text] { width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+  .row > * { flex:1 1 200px; }
+  .btn { display:inline-flex; justify-content:center; align-items:center; padding:12px 16px; border:0; border-radius:12px; background:var(--accent); color:var(--accent-text); font:700 15px/1 inherit; cursor:pointer; }
+  .btn.sec { background:transparent; color:var(--accent); border:1px solid var(--line); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .stat { font-size:13px; color:var(--muted); margin-top:10px; }
+  .item { background:var(--card); border:1px solid var(--line); border-radius:14px; margin-bottom:14px; overflow:hidden; }
+  .item .hd { display:flex; justify-content:space-between; gap:8px; padding:10px 14px; font-size:13px; color:var(--muted); }
+  .item .hd b { color:var(--text); font-size:14px; overflow-wrap:anywhere; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:2px; background:var(--line); }
+  .pair figure { margin:0; background:var(--card); position:relative; }
+  .pair img { display:block; width:100%; height:auto; }
+  .pair figcaption { position:absolute; left:8px; top:8px; background:rgba(0,0,0,.6); color:#fff; font-size:12px; padding:2px 8px; border-radius:999px; }
+  .vote { display:flex; flex-wrap:wrap; gap:6px; padding:12px 14px; }
+  .vote button { border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:999px; padding:8px 12px; font:inherit; font-size:14px; cursor:pointer; }
+  .vote button[aria-pressed=true] { background:var(--text); color:var(--bg); border-color:var(--text); }
+  .vote label.fp { display:flex; gap:6px; align-items:center; font-size:14px; color:var(--text); margin:0 0 0 auto; }
+  .err { color:var(--bad); font-size:13px; }
+  @media (max-width:560px) { .pair { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>가림 검증</h1>
+  <p class="sub">앱 촬영 화면과 같은 모델(MediaPipe DeepLab v3 사람 분할 + 얼굴 검출)과 같은 설정(긴 변 1280px, 여유 8%, 강한 흐림)으로 사진을 가린 뒤 원본 옆에 보여 줍니다. 사진은 이 브라우저 안에서만 처리되고 어디에도 올라가지 않습니다.</p>
+
+  <section class="card">
+    <div class="row">
+      <div><label for="who">판독자</label><input id="who" type="text" placeholder="예: 정태원" autocomplete="off"></div>
+      <div><label for="files">사진 고르기 (여러 장)</label><input id="files" type="file" accept="image/*" multiple></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn sec" id="csv" type="button" disabled>판독 결과 CSV 내보내기</button>
+      <button class="btn sec" id="clear" type="button">판독 기록 지우기</button>
+    </div>
+    <p class="stat" id="stat">모델 준비 중…</p>
+    <p class="err" id="err"></p>
+  </section>
+
+  <section class="card" style="font-size:14px">
+    <b>판독 기준 (T6)</b>
+    <ul style="margin:6px 0 0; padding-left:20px">
+      <li><b>얼굴 누락</b>: 가린 사진에서 얼굴을 알아볼 수 있는 사람이 있음 (목표 0건)</li>
+      <li><b>몸 일부 누락</b>: 얼굴은 가려졌지만 팔·다리·몸 일부가 흐린 영역 밖으로 나옴</li>
+      <li><b>누락 없음</b>: 사진 속 사람이 모두 흐린 영역 안에 있음</li>
+      <li><b>사람 없음</b>: 원본에 사람이 없음 (누락률 계산에서 빠짐)</li>
+      <li><b>오탐</b>: 사람이 아닌 것을 가림 (따로 표시)</li>
+    </ul>
+    <p class="stat">두 사람이 따로 판독해 CSV를 내보낸 뒤 <code>python3 tools/t6_agreement.py 판독자1.csv 판독자2.csv</code>로 누락률·95% 신뢰구간·일치도(카파)를 계산합니다.</p>
+  </section>
+
+  <div id="list"></div>
+</main>
+
+<script type="module">
+import { redact } from '../redact.js';
+
+const MP_VER = '0.10.14';
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/vision_bundle.mjs`;
+const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/wasm`;
+const MP_SEG = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite';
+const MP_FACE = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
+const PERSON = 15, MAX_SIDE = 1280;                 // shoot.html과 같은 값
+const VERDICTS = [['none', '누락 없음'], ['body', '몸 일부 누락'], ['face', '얼굴 누락'], ['noperson', '사람 없음']];
+const KEY = 'vparc.redactcheck';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const store = { get() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch { return {}; } },
+  set(v) { try { localStorage.setItem(KEY, JSON.stringify(v)); } catch {} } };
+let rec = store.get();                              // { who, items: { 파일명: {...} } }
+rec.items = rec.items || {};
+$('who').value = rec.who || '';
+$('who').addEventListener('input', () => { rec.who = $('who').value.trim(); store.set(rec); });
+
+let models = null;
+async function make(mod, fs, ctor, opts) {
+  try { return await mod[ctor].createFromOptions(fs, { ...opts, baseOptions: { ...opts.baseOptions, delegate: 'GPU' } }); }
+  catch { return await mod[ctor].createFromOptions(fs, { ...opts, baseOptions: { ...opts.baseOptions, delegate: 'CPU' } }); }
+}
+async function loadModels() {
+  const mod = await import(MP_URL);
+  const fs = await mod.FilesetResolver.forVisionTasks(MP_WASM);
+  const segmenter = await make(mod, fs, 'ImageSegmenter', { baseOptions: { modelAssetPath: MP_SEG }, runningMode: 'IMAGE', outputCategoryMask: true, outputConfidenceMasks: false });
+  const faceDetector = await make(mod, fs, 'FaceDetector', { baseOptions: { modelAssetPath: MP_FACE }, runningMode: 'IMAGE', minDetectionConfidence: 0.4 });
+  return { segmenter, faceDetector };
+}
+const ready = loadModels().then(m => { models = m; stat(); })
+  .catch(e => { $('err').textContent = '모델을 불러오지 못했어요: ' + (e.message || e); });
+
+function stat(extra = '') {
+  const v = Object.values(rec.items), n = (k) => v.filter(x => x.verdict === k).length;
+  $('stat').textContent = (models ? '모델 준비됨' : '모델 준비 중…') + ` · 판독 ${v.filter(x => x.verdict).length}/${v.length}장`
+    + ` (누락 없음 ${n('none')}, 몸 일부 ${n('body')}, 얼굴 ${n('face')}, 사람 없음 ${n('noperson')}, 오탐 ${v.filter(x => x.fp).length})` + extra;
+  $('csv').disabled = !v.some(x => x.verdict);
+}
+stat();
+
+// 앱과 같게: 방향 보정해서 긴 변 1280px 캔버스로
+async function toCanvas(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const k = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); bmp.close?.();
+  return c;
+}
+const url = (c) => new Promise(ok => c.toBlob(b => ok(URL.createObjectURL(b)), 'image/jpeg', 0.85));
+
+$('files').addEventListener('change', async (e) => {
+  const files = [...e.target.files]; e.target.value = '';
+  await ready; if (!models) return;
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    stat(` · 처리 중 ${i + 1}/${files.length}`);
+    try {
+      const c = await toCanvas(f);
+      const faces = models.faceDetector.detect(c).detections.length;
+      const t0 = performance.now();
+      // 킥보드 박스 없이 가림만 확인 (박스 기준 근거 손실 판단은 촬영 화면에서)
+      const r = await redact(c, null, { segmenter: models.segmenter, faceDetector: models.faceDetector, personIndex: PERSON });
+      const ms = Math.round(performance.now() - t0);
+      const prev = rec.items[f.name] || {};
+      rec.items[f.name] = { ...prev, file: f.name, w: c.width, h: c.height, rects: r.rects.length, faces, ms };
+      store.set(rec);
+      render(f.name, await url(c), await url(r.canvas));
+    } catch (err) {
+      const d = document.createElement('p'); d.className = 'err'; d.textContent = `${f.name}: ${err.message || err}`; $('list').prepend(d);
+    }
+  }
+  stat();
+});
+
+function render(name, orig, masked) {
+  const it = rec.items[name];
+  const el = document.createElement('div'); el.className = 'item';
+  el.innerHTML = `<div class="hd"><b>${esc(name)}</b><span>가린 칸 ${it.rects} · 얼굴 검출 ${it.faces} · ${it.ms}ms</span></div>
+    <div class="pair"><figure><img alt="원본" src="${orig}"><figcaption>원본 (이 기기 안에서만)</figcaption></figure>
+      <figure><img alt="가린 사진" src="${masked}"><figcaption>서버로 가는 사진</figcaption></figure></div>
+    <div class="vote">${VERDICTS.map(([k, t]) => `<button type="button" data-v="${k}" aria-pressed="${it.verdict === k}">${t}</button>`).join('')}
+      <label class="fp"><input type="checkbox" ${it.fp ? 'checked' : ''}> 오탐</label></div>`;
+  el.querySelector('.vote').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-v]'); if (!b) return;
+    it.verdict = b.dataset.v; it.at = new Date().toISOString(); store.set(rec);
+    el.querySelectorAll('[data-v]').forEach(x => x.setAttribute('aria-pressed', x === b));
+    stat();
+  });
+  el.querySelector('input[type=checkbox]').addEventListener('change', (e) => { it.fp = e.target.checked; store.set(rec); stat(); });
+  $('list').prepend(el);
+}
+
+$('csv').addEventListener('click', () => {
+  const who = rec.who || '판독자';
+  const head = ['reviewer', 'file', 'verdict', 'false_positive', 'rects', 'faces_detected', 'width', 'height', 'ms', 'at'];
+  const q = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+  const lines = [head.join(',')].concat(Object.values(rec.items).filter(x => x.verdict)
+    .map(x => [who, x.file, x.verdict, x.fp ? 1 : 0, x.rects, x.faces, x.w, x.h, x.ms, x.at].map(q).join(',')));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\n')], { type: 'text/csv' }));
+  a.download = `가림판독_${who}_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+});
+$('clear').addEventListener('click', () => {
+  if (!Object.keys(rec.items).length) return;
+  rec.items = {}; store.set(rec); $('list').innerHTML = ''; stat();
+});
+</script>
+</body>
+</html>
