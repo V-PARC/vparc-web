@@ -1,8 +1,9 @@
 // V-PARC 판단 가능성 모델 (A2) — 휴대폰 브라우저에서 ONNX로 실행
 // 입력: 224x224 RGB(ImageNet 평균·표준편차) + 수치 특징 6개 (학습 노트북 degrade.features()와 같은 계산)
 // 출력: [판단 충분, 기체 없음, 잘림, 바닥 안 보임, 흔들림, 역광] 확률
-export const MODEL_URL = 'models/judgeability_v2.onnx';
-export const META_URL = 'models/meta.json';
+// 이 파일 기준 경로: test/ 아래 페이지에서 불러도 같은 모델을 씀 (저장 키도 절대 주소라 그대로)
+export const MODEL_URL = new URL('./models/judgeability_v2.onnx', import.meta.url).href;
+export const META_URL = new URL('./models/meta.json', import.meta.url).href;
 export const ORT_VER = '1.19.2';
 export const REASONS = ['none', 'cut', 'floor', 'blur', 'light'];
 const CACHE = 'vparc-models-v2';

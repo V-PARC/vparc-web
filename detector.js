@@ -2,7 +2,7 @@
 // 전처리·후처리는 vparc/onnx_tools.py(letterbox, decode)와 geometry.py(select_target)를 그대로 옮김
 import { ORT_VER, loadOrt, fetchCached, fetchFresh, dropCached } from './judge.js';
 
-export const DET_URL = 'models/detector.onnx';
+export const DET_URL = new URL('./models/detector.onnx', import.meta.url).href;
 export const DET_VERSION = 'yolo26n-det_r1';
 const SIZE = 640, CONF = 0.25, BAND = [0.2, 0.8], IOU = 0.7;
 

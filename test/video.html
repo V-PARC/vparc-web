@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>V-PARC 영상 판정</title>
+<meta name="description" content="반납 상황 영상을 재생하면서 휴대폰 모델(킥보드 검출·판단 가능성·촬영 안내), 사람 흐림, 서버 판정 근거(항목별 확률·기준·결합 단계)를 시간 따라 본다.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --text:#16181d; --muted:#6b7280; --line:#e5e7eb; --accent:#1f6feb; --accent-text:#fff;
+          --ok:#1a7f37; --bad:#cf222e; --warn:#9a6700; --bar:#c9d1d9; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f1115; --card:#16181d; --text:#e8eaee; --muted:#9aa2ae; --line:#2a2f37; --accent:#4c8dff; --accent-text:#0b0d10;
+            --ok:#3fb950; --bad:#f85149; --warn:#d29922; --bar:#3a414b; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 "Pretendard Variable",-apple-system,"Apple SD Gothic Neo",sans-serif; word-break:keep-all; }
+  main { max-width:1200px; margin:0 auto; padding:16px 16px 64px; }
+  h1 { font-size:21px; margin:2px 0; } h2 { font-size:15px; margin:0 0 8px; }
+  .sub { color:var(--muted); margin:0 0 12px; font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; align-items:end; }
+  label { display:block; font-size:12px; color:var(--muted); margin:0 0 3px; }
+  input[type=text], select { width:100%; padding:8px 10px; border-radius:9px; border:1px solid var(--line); background:var(--bg); color:var(--text); font:inherit; }
+  .btn { padding:9px 14px; border:0; border-radius:10px; background:var(--accent); color:var(--accent-text); font:700 14px/1 inherit; cursor:pointer; }
+  .btn.sec { background:transparent; color:var(--accent); border:1px solid var(--line); }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .stage { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .view { position:relative; background:#000; border-radius:12px; overflow:hidden; }
+  .view video, .view canvas.img { display:block; width:100%; height:auto; }
+  .view canvas.ov { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .tag { position:absolute; left:8px; top:8px; background:rgba(0,0,0,.65); color:#fff; font-size:12px; padding:2px 8px; border-radius:999px; }
+  .guide { position:absolute; left:50%; bottom:10px; transform:translateX(-50%); max-width:calc(100% - 20px); background:rgba(0,0,0,.72); color:#fff;
+           padding:6px 12px; border-radius:999px; font-weight:600; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .guide.ok { background:rgba(26,127,55,.9); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .bars { display:grid; grid-template-columns:auto 1fr 48px; gap:4px 8px; align-items:center; font-size:13px; }
+  .bars .b { height:10px; background:var(--line); border-radius:5px; position:relative; overflow:hidden; }
+  .bars .b i { position:absolute; left:0; top:0; bottom:0; background:var(--bar); border-radius:5px; }
+  .bars .b i.hot { background:var(--bad); } .bars .b i.good { background:var(--ok); }
+  .bars .b u { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--text); opacity:.55; }
+  .num { font-variant-numeric:tabular-nums; text-align:right; }
+  .res { font-size:20px; font-weight:800; margin:2px 0 6px; }
+  .res.SUITABLE { color:var(--ok); } .res.UNSUITABLE { color:var(--bad); } .res.REVIEW { color:var(--warn); }
+  .muted { color:var(--muted); font-size:12px; }
+  ol.steps { margin:6px 0 0; padding-left:18px; font-size:13px; }
+  canvas#chart { width:100%; height:180px; display:block; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { padding:5px 6px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+  td.num, th.num { text-align:right; }
+  tr.pick { cursor:pointer; } tr.pick:hover { background:var(--bg); }
+  .wrap { overflow-x:auto; }
+  .err { color:var(--bad); font-size:13px; }
+  @media (max-width:760px) { .stage, .cols { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>영상 판정</h1>
+  <p class="sub">반납 상황 영상을 재생하면 앱 촬영 화면과 같은 휴대폰 모델이 초당 3번 돌아 수치와 안내 문구가 바뀌고, 오른쪽에는 사람을 흐린 '서버로 가는 화면'이 나옵니다. 정한 간격마다 그 화면을 판정 API로 보내 적합·부적합 근거를 받습니다. 영상 원본은 이 브라우저 밖으로 나가지 않습니다.</p>
+
+  <section class="card">
+    <div class="grid">
+      <div><label for="file">영상 파일</label><input id="file" type="file" accept="video/*"></div>
+      <div><label for="every">서버 판정 간격 (영상 시간)</label>
+        <select id="every"><option value="0">끔 (휴대폰 모델만)</option><option value="2">2초마다</option><option value="3" selected>3초마다</option><option value="5">5초마다</option><option value="10">10초마다</option></select></div>
+      <div><label for="pause">서버 판정 동안</label>
+        <select id="pause"><option value="1" selected>영상 멈춤 (수치와 장면이 맞음)</option><option value="0">계속 재생</option></select></div>
+      <div><label for="rate">재생 속도</label>
+        <select id="rate"><option>0.5</option><option selected>1</option><option>1.5</option><option>2</option></select></div>
+      <div><label for="zone">구역</label>
+        <select id="zone"><option value="1" selected>구역 안</option><option value="0">구역 밖</option></select></div>
+      <div><label for="sess">시험 세션 (집계 제외)</label><input id="sess" type="text" value="P00-B-9"></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn" id="now" type="button" disabled>지금 장면 서버 판정</button>
+      <button class="btn sec" id="csv" type="button" disabled>CSV 내보내기</button>
+    </div>
+    <p class="muted" id="foot">모델 준비 중…</p>
+    <p class="err" id="err"></p>
+  </section>
+
+  <section class="stage">
+    <div class="view"><video id="video" playsinline controls muted></video><canvas class="ov" id="ov"></canvas>
+      <span class="tag">원본 (이 기기 안에서만)</span><div class="guide" id="guide" hidden></div></div>
+    <div class="view"><canvas class="img" id="masked" width="16" height="9"></canvas><canvas class="ov" id="ov2"></canvas>
+      <span class="tag" id="maskTag">서버로 가는 화면 (사람 흐림)</span></div>
+  </section>
+
+  <section class="cols" style="margin-top:12px">
+    <div class="card">
+      <h2>휴대폰 모델 <span class="muted" id="phoneT"></span></h2>
+      <div class="bars" id="phoneBars"></div>
+      <p class="muted" id="phoneNote" style="margin:8px 0 0"></p>
+    </div>
+    <div class="card">
+      <h2>서버 판정 <span class="muted" id="srvT"></span></h2>
+      <div id="srv"><p class="muted">영상을 재생하면 정한 간격마다 판정합니다.</p></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>시간축</h2>
+    <canvas id="chart"></canvas>
+    <p class="muted">선: 휴대폰 '판단 충분' 확률(초록)과 가장 높은 부족 사유(회색). 점: 서버 항목 확률(빨강 넘어짐 · 주황 점자블록 · 보라 금지 구역), 점선: 서버 bad·ok 기준. 그래프를 누르면 그 시간으로 이동합니다.</p>
+  </section>
+
+  <section class="card">
+    <h2>서버 판정 기록</h2>
+    <div class="wrap"><table><thead><tr><th>영상 시간</th><th>결과</th><th class="num">판단 근거</th><th class="num">넘어짐</th><th class="num">점자블록</th><th class="num">금지 구역</th><th class="num">보행 방해</th><th>사유</th><th class="num">흐린 칸</th><th class="num">왕복</th></tr></thead>
+      <tbody id="rows"></tbody></table></div>
+  </section>
+</main>
+
+<script type="module">
+import { loadJudge, makeGuide, REASONS } from '../judge.js';
+import { loadDetector, DET_VERSION } from '../detector.js';
+import { redact } from '../redact.js';
+import { makeApi, uuid } from '../api.js';
+import { SHOOT_TEXT } from '../messages.js';
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const f3 = (v) => v == null ? '–' : (+v).toFixed(3);
+const tfmt = (s) => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
+
+const MP_VER = '0.10.14';
+const MP_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/vision_bundle.mjs`;
+const MP_WASM = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}/wasm`;
+const MP_SEG = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/deeplab_v3/float32/1/deeplab_v3.tflite';
+const MP_FACE = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite';
+const PERSON = 15, MAX_SIDE = 1280, EVERY_MS = 333, MASK_EVERY_S = 1.0;
+const API_REASON = { none: 'NO_VEHICLE', cut: 'CROPPED', floor: 'NO_GROUND', blur: 'BLUR', light: 'BACKLIGHT' };
+const PHONE_LABEL = { sufficient: '판단 충분', none: '기체 없음', cut: '잘림', floor: '바닥 안 보임', blur: '흔들림', light: '역광' };
+const ITEM_COLOR = { fallen: '#cf222e', tactile: '#e36209', entrance: '#8250df', walkway: '#6b7280' };
+
+const video = $('video'), api = makeApi();
+const S = { det: null, judge: null, guide: null, seg: null, face: null, busy: false, maskBusy: false, srvBusy: false,
+  box: null, lastTick: 0, lastMaskT: -9, lastSrvT: -9, phone: [], srv: [], ret: null, attempt: 0, guideKey: null, red: null, startedAt: 0 };
+window.__vparcVideo = S;
+
+// ---- 모델 (촬영 화면과 같은 것) ----
+async function mpMake(mod, fs, ctor, opts) {
+  try { return await mod[ctor].createFromOptions(fs, { ...opts, baseOptions: { ...opts.baseOptions, delegate: 'GPU' } }); }
+  catch { return await mod[ctor].createFromOptions(fs, { ...opts, baseOptions: { ...opts.baseOptions, delegate: 'CPU' } }); }
+}
+const notes = {};
+function foot() {
+  $('foot').textContent = [notes.judge, notes.det, notes.seg, api.mock ? '판정 API: 없음(모의 판정, 근거 수치 없음)' : `판정 API: ${api.base}`].filter(Boolean).join(' · ');
+}
+const ready = Promise.allSettled([
+  (window.__mockJudge ? Promise.resolve({ run: window.__mockJudge, meta: null, mock: true }) : loadJudge())
+    .then(j => { S.judge = j; S.guide = makeGuide(j.meta); notes.judge = '판단 가능성 모델 준비됨'; })
+    .catch(e => { notes.judge = '판단 가능성 모델 실패: ' + (e.message || e); }),
+  (window.__mockDets ? Promise.resolve({ detect: window.__mockDets }) : loadDetector())
+    .then(d => { S.det = d; notes.det = `킥보드 검출기(${DET_VERSION}) 준비됨`; })
+    .catch(e => { notes.det = '검출기 실패: ' + (e.message || e); }),
+  (async () => {
+    const mod = await import(MP_URL), fs = await mod.FilesetResolver.forVisionTasks(MP_WASM);
+    S.seg = await mpMake(mod, fs, 'ImageSegmenter', { baseOptions: { modelAssetPath: MP_SEG }, runningMode: 'IMAGE', outputCategoryMask: true, outputConfidenceMasks: false });
+    S.face = await mpMake(mod, fs, 'FaceDetector', { baseOptions: { modelAssetPath: MP_FACE }, runningMode: 'IMAGE', minDetectionConfidence: 0.4 });
+    notes.seg = '사람 흐림 모델 준비됨';
+  })().catch(e => { notes.seg = '사람 흐림 모델 실패: ' + (e.message || e); }),
+]).then(() => { foot(); $('now').disabled = false; });
+foot();
+
+// ---- 영상 ----
+$('file').addEventListener('change', (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  video.src = URL.createObjectURL(f); S.name = f.name;
+  S.phone = []; S.srv = []; S.lastSrvT = -9; S.lastMaskT = -9; S.ret = null; S.attempt = 0; S.startedAt = performance.now();
+  S.guide && S.guide.reset(); $('rows').innerHTML = ''; $('srv').innerHTML = '<p class="muted">재생하면 판정합니다.</p>'; draw();
+});
+$('rate').addEventListener('change', () => { video.playbackRate = +$('rate').value; });
+video.addEventListener('loadedmetadata', () => { video.playbackRate = +$('rate').value; sizeOverlays(); });
+window.addEventListener('resize', sizeOverlays);
+function sizeOverlays() {
+  for (const id of ['ov', 'ov2']) { const c = $(id); c.width = c.clientWidth * devicePixelRatio; c.height = c.clientHeight * devicePixelRatio; }
+}
+
+// 프레임을 앱과 같게 긴 변 1280 캔버스로
+function grab() {
+  const w0 = video.videoWidth, h0 = video.videoHeight, k = Math.min(1, MAX_SIDE / Math.max(w0, h0));
+  const c = document.createElement('canvas'); c.width = Math.round(w0 * k); c.height = Math.round(h0 * k);
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height); return c;
+}
+
+// ---- 휴대폰 모델: 초당 3번 (A2와 같은 주기) ----
+async function phoneTick() {
+  if (S.busy || !video.videoWidth || !S.judge) return;
+  S.busy = true;
+  try {
+    const t = video.currentTime, w = video.videoWidth, h = video.videoHeight;
+    let box = null;
+    if (S.det) box = window.__mockDets ? null : await S.det.detect(video, w, h);
+    if (window.__mockDets) { const d = window.__mockDets(video)[0]; if (d) { const b = d.boundingBox; box = { x: b.originX / w, y: b.originY / h, w: b.width / w, h: b.height / h, score: d.categories[0].score }; } }
+    S.box = box;
+    const p = await S.judge.run(video, box);
+    const key = S.guide.push(p, performance.now());
+    if (key) S.guideKey = key;
+    S.phone.push({ t, ...p, box: box ? +(box.score || 0).toFixed(3) : null, guide: S.guide.st.current });
+    showPhone(t, p, box);
+  } catch (e) { console.warn(e); }
+  S.busy = false;
+}
+function bar(label, v, thr, cls) {
+  const pct = Math.max(0, Math.min(1, v || 0)) * 100;
+  return `<span>${label}</span><span class="b"><i class="${cls || ''}" style="width:${pct}%"></i>${thr != null ? `<u style="left:${thr * 100}%"></u>` : ''}</span><span class="num">${f3(v)}</span>`;
+}
+function showPhone(t, p, box) {
+  const cfg = S.guide.cfg;
+  let h = bar(PHONE_LABEL.sufficient, p.sufficient, cfg.ready, p.sufficient >= cfg.ready ? 'good' : '');
+  for (const r of REASONS) h += bar(PHONE_LABEL[r], p[r], cfg.need[r], p[r] > cfg.need[r] ? 'hot' : '');
+  h += bar('킥보드 검출', box ? box.score : 0, null, '');
+  $('phoneBars').innerHTML = h; $('phoneT').textContent = '· ' + tfmt(t);
+  const st = S.guide.st.current;
+  $('phoneNote').textContent = `상태: ${st === 'ready' ? '준비 완료' : st === 'pending' ? '판단 중' : PHONE_LABEL[st] || st}`
+    + ` · 세로선 = 기준값(준비 ${cfg.ready}, 사유별 ${REASONS.map(r => cfg.need[r]).join('/')}) · 최근 5프레임 평균, 문구는 1.5초 유지`;
+  const g = $('guide'), key = S.guide.st.shown || 'loading';
+  g.hidden = false; g.textContent = SHOOT_TEXT[key] || key; g.classList.toggle('ok', key === 'ready');
+  drawBox($('ov'), box);
+}
+function drawBox(c, box, rects, sw, sh) {
+  const cw = Math.round(c.clientWidth * devicePixelRatio), ch = Math.round(c.clientHeight * devicePixelRatio);
+  if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+  const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
+  if (box) { g.strokeStyle = '#3fb950'; g.lineWidth = 3 * devicePixelRatio; g.strokeRect(box.x * c.width, box.y * c.height, box.w * c.width, box.h * c.height); }
+  if (rects && sw) { g.strokeStyle = 'rgba(255,255,255,.8)'; g.setLineDash([6, 4]); g.lineWidth = 1.5 * devicePixelRatio;
+    for (const r of rects) g.strokeRect(r.x / sw * c.width, r.y / sh * c.height, r.w / sw * c.width, r.h / sh * c.height); g.setLineDash([]); }
+}
+
+// ---- 사람 흐림: 1초마다 (서버로 가는 화면) ----
+async function maskTick(force) {
+  if (S.maskBusy || !video.videoWidth || (!S.seg && !window.__mockSeg)) return null;
+  const t = video.currentTime;
+  if (!force && Math.abs(t - S.lastMaskT) < MASK_EVERY_S) return null;
+  S.maskBusy = true; S.lastMaskT = t;
+  try {
+    const c = grab(), b = S.box;
+    const px = b ? { x: b.x * c.width, y: b.y * c.height, w: b.w * c.width, h: b.h * c.height } : null;
+    const r = await redact(c, px, { segmenter: window.__mockSeg || S.seg, faceDetector: S.face, personIndex: window.__mockSeg ? undefined : PERSON });
+    const m = $('masked'); m.width = r.canvas ? r.canvas.width : c.width; m.height = r.canvas ? r.canvas.height : c.height;
+    m.getContext('2d').drawImage(r.canvas || c, 0, 0);
+    const ov2 = $('ov2');
+    drawBox(ov2, b, r.rects, c.width, c.height);
+    $('maskTag').textContent = `서버로 가는 화면 · ${tfmt(t)} · 흐린 칸 ${(r.rects || []).length}` + (r.failed ? ' · 가림 실패' : r.lost ? ' · 근거 손실(사진 안 보냄)' : '');
+    S.red = { t, r, box: b, w: c.width, h: c.height };
+    return S.red;
+  } catch (e) { console.warn(e); return null; }
+  finally { S.maskBusy = false; }
+}
+
+// ---- 서버 판정 ----
+async function ensureReturn() {
+  if (S.ret) return S.ret;
+  const sess = $('sess').value.trim();
+  const body = { request_id: uuid(), operator: 'BEAM', vehicle_type: 'KICKBOARD', zone_id: null,
+    ...(/^P\d{2}-[AB]-\d$/.test(sess) ? { test_session: sess } : {}), client: { app_version: 'video-0.1', device: navigator.platform, browser: navigator.userAgent.slice(0, 120) } };
+  const r = await api.startReturn(body); S.ret = r.return_id; S.attempt = 0; return S.ret;
+}
+async function srvJudge() {
+  if (S.srvBusy || !video.videoWidth) return;
+  if (S.srv.some(s => Math.abs(s.t - video.currentTime) < 0.05)) return;   // 같은 장면 두 번 판정 안 함
+  S.srvBusy = true; const wasPlaying = !video.paused && !video.ended;
+  if ($('pause').value === '1' && wasPlaying) video.pause();
+  const t = video.currentTime;
+  $('srvT').textContent = '· ' + tfmt(t) + ' 판정 중…';
+  try {
+    // 킥보드 박스가 이 장면 것이 되도록 휴대폰 모델을 한 번 먼저 돌림
+    const lp = S.phone[S.phone.length - 1];
+    if (!lp || Math.abs(lp.t - t) > 0.4) { while (S.busy) await new Promise(r => setTimeout(r, 30)); await phoneTick(); }
+    let red = null;
+    for (let i = 0; i < 100 && !red; i++) { while (S.maskBusy) await new Promise(r => setTimeout(r, 30)); red = await maskTick(true); }
+    if (!red) throw new Error('흐린 화면을 만들지 못했어요');
+    const { r, box } = red;
+    const status = r.failed ? 'FAILED' : (r.lost ? 'EVIDENCE_LOSS' : 'OK');
+    const st = S.guide?.st || {};
+    const meta = { request_id: uuid(), attempt: ++S.attempt, captured_at: new Date().toISOString(),
+      box: box ? { x1: +box.x.toFixed(4), y1: +box.y.toFixed(4), x2: +(box.x + box.w).toFixed(4), y2: +(box.y + box.h).toFixed(4), score: +(box.score || 0).toFixed(3), label: 'kickboard' } : null,
+      in_zone: $('zone').value === '1', caution: [],
+      redaction: { status, masked_ratio_box: +(r.box || 0).toFixed(3), masked_ratio_ground: +(r.floor || 0).toFixed(3) },
+      capture_guide: { ready: st.current === 'ready', last_reason: API_REASON[st.current] || null, elapsed_ms: Math.round(t * 1000), timeout_15s: t > 15 },
+      guide_mode: 'B_ai', model_versions: { detector: DET_VERSION, judgability: 'jdg-v2' }, debug: true };
+    let res, rtt;
+    if (status === 'EVIDENCE_LOSS') {
+      // 서버가 아직 사진 없는 근거 손실을 받지 못함(400). 보내지 않고 기록만
+      res = { result: 'REVIEW', review_reason: 'EVIDENCE_LOSS', local: true };
+    } else {
+      const blob = r.blob || null;
+      await ensureReturn();
+      const t0 = performance.now();
+      try { res = await api.judge(S.ret, meta, status === 'FAILED' ? null : blob); }
+      catch (e) { if (e.status === 409 || e.status === 404) { S.ret = null; await ensureReturn(); res = await api.judge(S.ret, meta, status === 'FAILED' ? null : blob); } else throw e; }
+      rtt = Math.round(performance.now() - t0);
+    }
+    const rec = { t, res, rtt, rects: (r.rects || []).length };
+    S.srv.push(rec); showSrv(rec); addRow(rec); draw();
+  } catch (e) {
+    console.warn('서버 판정 실패', e);
+    $('srv').innerHTML = `<p class="err">${tfmt(t)} 판정 실패: ${esc((e.status ? 'HTTP ' + e.status + ' ' : '') + (e.message || e))}</p>`;
+  } finally {
+    S.srvBusy = false; $('srvT').textContent = '· ' + tfmt(t);
+    if ($('pause').value === '1' && wasPlaying) video.play();
+  }
+}
+$('now').addEventListener('click', () => srvJudge());
+
+const ITEMS = ['fallen', 'tactile', 'entrance', 'walkway'];
+function itemsOf(res) { const d = res.debug; const m = {}; for (const it of d?.items || []) m[it.item] = it; return m; }
+function showSrv({ t, res, rtt }) {
+  const d = res.debug, name = { SUITABLE: '적합', UNSUITABLE: '부적합', REVIEW: '추가 확인' }[res.result] || res.result;
+  let h = `<div class="res ${res.result}">${name}${res.review_reason ? ` <span class="muted">(${esc(res.review_reason)})</span>` : ''}${res.reason ? ` <span class="muted">${esc(res.reason.title || res.reason.code)}</span>` : ''}</div>`;
+  if (d) {
+    const T = d.thresholds, im = itemsOf(res);
+    h += `<div class="bars">${bar('판단 근거', d.evidence.prob, T.evidence, d.evidence.ok ? 'good' : 'hot')}`;
+    for (const k of ITEMS) { const it = im[k]; if (!it) continue;
+      h += bar(it.name + (it.used_in_decision ? '' : ' (기록만)'), it.prob, T.bad, it.prob > T.bad ? 'hot' : it.prob < T.ok ? 'good' : ''); }
+    h += `</div><p class="muted" style="margin:6px 0 0">기준 ${esc(d.threshold_set)} · bad ${T.bad} (세로선) · ok ${T.ok} · 근거 ${T.evidence} · 모델 ${d.model_ms ? Object.entries(d.model_ms).map(([k, v]) => `${k} ${Math.round(v)}ms`).join(', ') : '-'} · 왕복 ${rtt ?? '-'}ms</p>`;
+    h += `<ol class="steps">${d.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`;
+    if (d.facilities) h += `<p class="muted">시설물 검출: ${esc(Object.entries(d.facilities).map(([k, v]) => `${k} ${v.length}`).join(', '))}</p>`;
+  } else if (res.local) {
+    h += '<p class="muted">사람 흐림이 킥보드·바닥을 너무 덮어(근거 손실) 사진을 보내지 않았어요. 앱에서는 추가 확인으로 접수되어야 하는 장면이에요.</p>';
+  } else {
+    h += `<p class="muted">근거 수치가 없어요. ${api.mock ? 'API 주소가 없어 모의 판정이에요. ?api=https://…/v1 로 열어 주세요.' : '시험 세션 형식(P00-B-9)을 확인해 주세요.'}</p>`;
+  }
+  $('srv').innerHTML = h; $('srvT').textContent = '· ' + tfmt(t);
+}
+function addRow(rec) {
+  const { t, res, rtt, rects } = rec, im = itemsOf(res), d = res.debug;
+  const tr = document.createElement('tr'); tr.className = 'pick';
+  const name = { SUITABLE: '적합', UNSUITABLE: '부적합', REVIEW: '추가 확인' }[res.result] || res.result;
+  tr.innerHTML = `<td>${tfmt(t)}</td><td class="res ${res.result}" style="font-size:13px;margin:0">${name}</td><td class="num">${f3(d?.evidence?.prob)}</td>`
+    + ITEMS.map(k => `<td class="num">${f3(im[k]?.prob)}</td>`).join('')
+    + `<td>${esc(res.reason?.code || res.review_reason || '')}</td><td class="num">${rects}</td><td class="num">${rtt ?? '–'}</td>`;
+  tr.addEventListener('click', () => { video.currentTime = t; showSrv(rec); });
+  $('rows').prepend(tr); $('csv').disabled = false;
+}
+
+// ---- 시간축 그래프 ----
+function draw() {
+  const c = $('chart'), W = c.clientWidth * devicePixelRatio, H = c.clientHeight * devicePixelRatio; c.width = W; c.height = H;
+  const g = c.getContext('2d'), dur = video.duration || Math.max(1, ...S.phone.map(p => p.t));
+  const X = (t) => 30 * devicePixelRatio + (t / dur) * (W - 40 * devicePixelRatio), Y = (v) => H - 14 * devicePixelRatio - v * (H - 24 * devicePixelRatio);
+  const css = getComputedStyle(document.documentElement);
+  g.strokeStyle = css.getPropertyValue('--line'); g.lineWidth = 1;
+  for (const v of [0, 0.5, 1]) { g.beginPath(); g.moveTo(X(0), Y(v)); g.lineTo(X(dur), Y(v)); g.stroke(); }
+  g.fillStyle = css.getPropertyValue('--muted'); g.font = `${10 * devicePixelRatio}px sans-serif`;
+  for (const v of [0, 0.5, 1]) g.fillText(v.toFixed(1), 2, Y(v) + 3 * devicePixelRatio);
+  const last = S.srv.findLast?.(s => s.res.debug) ; const T = last?.res.debug.thresholds;
+  if (T) { g.setLineDash([4, 4]); g.strokeStyle = '#cf222e88'; for (const v of [T.bad, T.ok]) { g.beginPath(); g.moveTo(X(0), Y(v)); g.lineTo(X(dur), Y(v)); g.stroke(); } g.setLineDash([]); }
+  const line = (key, color) => { g.strokeStyle = color; g.lineWidth = 2 * devicePixelRatio; g.beginPath();
+    S.phone.forEach((p, i) => { const v = typeof key === 'function' ? key(p) : p[key]; i ? g.lineTo(X(p.t), Y(v)) : g.moveTo(X(p.t), Y(v)); }); g.stroke(); };
+  const ph = [...S.phone].sort((a, b) => a.t - b.t); S.phone = ph;
+  line(p => Math.max(...REASONS.map(r => p[r] || 0)), '#9aa2ae');
+  line('sufficient', '#1a7f37');
+  for (const s of S.srv) { const im = itemsOf(s.res);
+    for (const k of ['fallen', 'tactile', 'entrance']) { if (im[k]?.prob == null) continue; g.fillStyle = ITEM_COLOR[k]; g.beginPath(); g.arc(X(s.t), Y(im[k].prob), 3.5 * devicePixelRatio, 0, 7); g.fill(); } }
+  if (video.duration) { g.strokeStyle = css.getPropertyValue('--text'); g.lineWidth = 1; g.beginPath(); g.moveTo(X(video.currentTime), 0); g.lineTo(X(video.currentTime), H); g.stroke(); }
+}
+$('chart').addEventListener('click', (e) => {
+  if (!video.duration) return; const b = $('chart').getBoundingClientRect();
+  video.currentTime = Math.max(0, Math.min(video.duration, (e.clientX - b.left - 30) / (b.width - 40) * video.duration));
+});
+
+// ---- 루프 ----
+function loop(now) {
+  if (!video.paused && !video.ended) {
+    if (now - S.lastTick > EVERY_MS) { S.lastTick = now; phoneTick(); }
+    maskTick(false);
+    const every = +$('every').value;
+    if (every > 0 && !api.mock && !S.srvBusy && video.currentTime - S.lastSrvT >= every) { S.lastSrvT = video.currentTime; srvJudge(); }
+    else if (every > 0 && api.mock && !S.srvBusy && video.currentTime - S.lastSrvT >= every) { S.lastSrvT = video.currentTime; srvJudge(); }
+    draw();
+  }
+  requestAnimationFrame(loop);
+}
+video.addEventListener('seeked', () => { S.lastSrvT = video.currentTime; if (video.paused) { phoneTick(); maskTick(true); draw(); } });
+ready.then(() => requestAnimationFrame(loop));
+
+// ---- CSV ----
+$('csv').addEventListener('click', () => {
+  const q = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+  const head = ['kind', 'video_t', 'sufficient', ...REASONS, 'box_score', 'guide_state', 'result', 'review_reason', 'reason_code', 'evidence', ...ITEMS, 'threshold_set', 'bad', 'ok', 'blur_rects', 'rtt_ms'];
+  const rows = S.phone.map(p => ['phone', p.t.toFixed(2), f3(p.sufficient), ...REASONS.map(r => f3(p[r])), p.box ?? '', p.guide, '', '', '', '', '', '', '', '', '', '', '', '', '']);
+  for (const s of S.srv) { const d = s.res.debug, im = itemsOf(s.res);
+    rows.push(['server', s.t.toFixed(2), '', ...REASONS.map(() => ''), '', '', s.res.result, s.res.review_reason || '', s.res.reason?.code || '', f3(d?.evidence?.prob),
+      ...ITEMS.map(k => f3(im[k]?.prob)), d?.threshold_set || '', d?.thresholds?.bad ?? '', d?.thresholds?.ok ?? '', s.rects, s.rtt ?? '']); }
+  rows.sort((a, b) => a[1] - b[1]);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + [head, ...rows].map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' }));
+  a.download = `영상판정_${(S.name || 'video').replace(/\.[^.]+$/, '')}.csv`; a.click();
+});
+</script>
+</body>
+</html>
