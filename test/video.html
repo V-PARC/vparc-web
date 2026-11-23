@@ -39,6 +39,7 @@
   .bars .b i { position:absolute; left:0; top:0; bottom:0; background:var(--bar); border-radius:5px; }
   .bars .b i.hot { background:var(--bad); } .bars .b i.good { background:var(--ok); }
   .bars .b u { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--text); opacity:.55; }
+  .bars .b u.lo { opacity:.3; } .bars .b i.mid { background:var(--warn); }
   .num { font-variant-numeric:tabular-nums; text-align:right; }
   .res { font-size:20px; font-weight:800; margin:2px 0 6px; }
   .res.SUITABLE { color:var(--ok); } .res.UNSUITABLE { color:var(--bad); } .res.REVIEW { color:var(--warn); }
@@ -205,7 +206,8 @@ async function phoneTick() {
 }
 function bar(label, v, thr, cls) {
   const pct = Math.max(0, Math.min(1, v || 0)) * 100;
-  return `<span>${label}</span><span class="b"><i class="${cls || ''}" style="width:${pct}%"></i>${thr != null ? `<u style="left:${thr * 100}%"></u>` : ''}</span><span class="num">${f3(v)}</span>`;
+  const ticks = (Array.isArray(thr) ? thr : thr != null ? [thr] : []).map((x, i, a) => `<u class="${a.length > 1 && i === 0 ? 'lo' : ''}" style="left:${x * 100}%"></u>`).join('');
+  return `<span>${label}</span><span class="b"><i class="${cls || ''}" style="width:${pct}%"></i>${ticks}</span><span class="num">${f3(v)}</span>`;
 }
 function showPhone(t, p, box) {
   const cfg = S.guide.cfg;
@@ -306,6 +308,22 @@ async function srvJudge() {
 $('now').addEventListener('click', () => srvJudge());
 
 const ITEMS = ['fallen', 'tactile', 'entrance', 'walkway'];
+// 판정 규칙(설계서 A4 결합)을 이 장면 수치로 풀어 쓴다. 근거 손실·A6처럼 수치 밖 사유는 서버 설명을 그대로 쓴다.
+function ruleSteps(d, im) {
+  const T = d.thresholds, used = Object.values(im).filter(it => it.used_in_decision);
+  if (!used.length || d.steps.some(s => s.includes('A6') || s.includes('돌리지 않음'))) return d.steps;
+  const worst = used.reduce((a, b) => (b.prob > a.prob ? b : a)), f = x => x.toFixed(3);
+  const out = [], bad = used.filter(it => it.prob > T.bad);
+  if (bad.length) return [`부적합 조건: ${bad.map(it => `${it.name} ${f(it.prob)}`).join(', ')} > bad ${T.bad} → 부적합`];
+  out.push(`부적합 조건 아님: 결합 항목 최대 ${worst.name} ${f(worst.prob)} ≤ bad ${T.bad}`);
+  const evOk = d.evidence.prob > T.evidence, allOk = worst.prob < T.ok;
+  out.push(`판단 근거 ${f(d.evidence.prob)} ${evOk ? '>' : '≤'} ${T.evidence} ${evOk ? '✓' : '✗ 근거 부족'}`);
+  out.push(`결합 항목 모두 ok ${T.ok} 미만? ${allOk ? `예 (최대 ${worst.name} ${f(worst.prob)}) ✓` : `아니오: ${used.filter(it => it.prob >= T.ok).map(it => `${it.name} ${f(it.prob)}`).join(', ')} ✗`}`);
+  out.push(evOk && allOk ? '→ 적합 (둘 다 만족)' : '→ 추가 확인 (적합 조건 중 하나를 못 채움)');
+  const rec = Object.values(im).filter(it => !it.used_in_decision && it.prob > T.bad);
+  if (rec.length) out.push(`참고: ${rec.map(it => `${it.name} ${f(it.prob)}`).join(', ')}는 bad를 넘었지만 기록만 하는 항목이라 결과에 영향 없음`);
+  return out;
+}
 function itemsOf(res) { const d = res.debug; const m = {}; for (const it of d?.items || []) m[it.item] = it; return m; }
 function showSrv({ t, res, rtt }) {
   const d = res.debug, name = { SUITABLE: '적합', UNSUITABLE: '부적합', REVIEW: '추가 확인' }[res.result] || res.result;
@@ -314,9 +332,9 @@ function showSrv({ t, res, rtt }) {
     const T = d.thresholds, im = itemsOf(res);
     h += `<div class="bars">${bar('판단 근거', d.evidence.prob, T.evidence, d.evidence.ok ? 'good' : 'hot')}`;
     for (const k of ITEMS) { const it = im[k]; if (!it) continue;
-      h += bar(it.name + (it.used_in_decision ? '' : ' (기록만)'), it.prob, T.bad, it.prob > T.bad ? 'hot' : it.prob < T.ok ? 'good' : ''); }
-    h += `</div><p class="muted" style="margin:6px 0 0">기준 ${esc(d.threshold_set)} · bad ${T.bad} (세로선) · ok ${T.ok} · 근거 ${T.evidence} · 모델 ${d.model_ms ? Object.entries(d.model_ms).map(([k, v]) => `${k} ${Math.round(v)}ms`).join(', ') : '-'} · 왕복 ${rtt ?? '-'}ms</p>`;
-    h += `<ol class="steps">${d.steps.map(s => `<li>${esc(s)}</li>`).join('')}</ol>`;
+      h += bar(it.name + (it.used_in_decision ? '' : ' (기록만)'), it.prob, [T.ok, T.bad], it.prob > T.bad ? 'hot' : it.prob < T.ok ? 'good' : 'mid'); }
+    h += `</div><p class="muted" style="margin:6px 0 0">기준 ${esc(d.threshold_set)} · 세로선: 항목은 옅은 선 ok ${T.ok}, 진한 선 bad ${T.bad} / 판단 근거는 ${T.evidence} · 모델 ${d.model_ms ? Object.entries(d.model_ms).map(([k, v]) => `${k} ${Math.round(v)}ms`).join(', ') : '-'} · 왕복 ${rtt ?? '-'}ms</p>`;
+    h += `<ol class="steps">${ruleSteps(d, im).map(s => `<li>${esc(s)}</li>`).join('')}</ol>`;
     if (d.facilities) h += `<p class="muted">시설물 검출: ${esc(Object.entries(d.facilities).map(([k, v]) => `${k} ${v.length}`).join(', '))}</p>`;
   } else if (res.local) {
     h += '<p class="muted">사람 흐림이 킥보드·바닥을 너무 덮어(근거 손실) 사진을 보내지 않았어요. 앱에서는 추가 확인으로 접수되어야 하는 장면이에요.</p>';
