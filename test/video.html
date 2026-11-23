@@ -317,9 +317,11 @@ function ruleSteps(d, im) {
   if (bad.length) return [`부적합 조건: ${bad.map(it => `${it.name} ${f(it.prob)}`).join(', ')} > bad ${T.bad} → 부적합`];
   out.push(`부적합 조건 아님: 결합 항목 최대 ${worst.name} ${f(worst.prob)} ≤ bad ${T.bad}`);
   const evOk = d.evidence.prob > T.evidence, allOk = worst.prob < T.ok;
+  const held = (d.holds || []).filter(x => !x.ok);
   out.push(`판단 근거 ${f(d.evidence.prob)} ${evOk ? '>' : '≤'} ${T.evidence} ${evOk ? '✓' : '✗ 근거 부족'}`);
   out.push(`결합 항목 모두 ok ${T.ok} 미만? ${allOk ? `예 (최대 ${worst.name} ${f(worst.prob)}) ✓` : `아니오: ${used.filter(it => it.prob >= T.ok).map(it => `${it.name} ${f(it.prob)}`).join(', ')} ✗`}`);
-  out.push(evOk && allOk ? '→ 적합 (둘 다 만족)' : '→ 추가 확인 (적합 조건 중 하나를 못 채움)');
+  for (const x of d.holds || []) out.push(`보류 항목 ${x.name} ${x.prob == null ? '없음' : f(x.prob)} ${x.ok ? '<' : '≥'} ${x.need_under} ${x.ok ? '✓' : '✗ 적합 대신 추가 확인'}`);
+  out.push(evOk && allOk && !held.length ? `→ 적합 (${(d.holds || []).length ? '모두' : '둘 다'} 만족)` : '→ 추가 확인 (적합 조건 중 하나를 못 채움)');
   const rec = Object.values(im).filter(it => !it.used_in_decision && it.prob > T.bad);
   if (rec.length) out.push(`참고: ${rec.map(it => `${it.name} ${f(it.prob)}`).join(', ')}는 bad를 넘었지만 기록만 하는 항목이라 결과에 영향 없음`);
   return out;
@@ -333,6 +335,7 @@ function showSrv({ t, res, rtt }) {
     h += `<div class="bars">${bar('판단 근거', d.evidence.prob, T.evidence, d.evidence.ok ? 'good' : 'hot')}`;
     for (const k of ITEMS) { const it = im[k]; if (!it) continue;
       h += bar(it.name + (it.used_in_decision ? '' : ' (기록만)'), it.prob, [T.ok, T.bad], it.prob > T.bad ? 'hot' : it.prob < T.ok ? 'good' : 'mid'); }
+    for (const hd of d.holds || []) h += bar(hd.name, hd.prob, hd.need_under, hd.ok ? 'good' : 'mid');
     h += `</div><p class="muted" style="margin:6px 0 0">기준 ${esc(d.threshold_set)} · 세로선: 항목은 옅은 선 ok ${T.ok}, 진한 선 bad ${T.bad} / 판단 근거는 ${T.evidence} · 모델 ${d.model_ms ? Object.entries(d.model_ms).map(([k, v]) => `${k} ${Math.round(v)}ms`).join(', ') : '-'} · 왕복 ${rtt ?? '-'}ms</p>`;
     h += `<ol class="steps">${ruleSteps(d, im).map(s => `<li>${esc(s)}</li>`).join('')}</ol>`;
     if (d.facilities) h += `<p class="muted">시설물 검출: ${esc(Object.entries(d.facilities).map(([k, v]) => `${k} ${v.length}`).join(', '))}</p>`;
@@ -398,11 +401,11 @@ ready.then(() => requestAnimationFrame(loop));
 // ---- CSV ----
 $('csv').addEventListener('click', () => {
   const q = (s) => `"${String(s ?? '').replace(/"/g, '""')}"`;
-  const head = ['kind', 'video_t', 'sufficient', ...REASONS, 'box_score', 'guide_state', 'result', 'review_reason', 'reason_code', 'evidence', ...ITEMS, 'threshold_set', 'bad', 'ok', 'blur_rects', 'rtt_ms'];
+  const head = ['kind', 'video_t', 'sufficient', ...REASONS, 'box_score', 'guide_state', 'result', 'review_reason', 'reason_code', 'evidence', ...ITEMS, 'overall', 'threshold_set', 'bad', 'ok', 'blur_rects', 'rtt_ms'];
   const rows = S.phone.map(p => ['phone', p.t.toFixed(2), f3(p.sufficient), ...REASONS.map(r => f3(p[r])), p.box ?? '', p.guide, '', '', '', '', '', '', '', '', '', '', '', '', '']);
   for (const s of S.srv) { const d = s.res.debug, im = itemsOf(s.res);
     rows.push(['server', s.t.toFixed(2), '', ...REASONS.map(() => ''), '', '', s.res.result, s.res.review_reason || '', s.res.reason?.code || '', f3(d?.evidence?.prob),
-      ...ITEMS.map(k => f3(im[k]?.prob)), d?.threshold_set || '', d?.thresholds?.bad ?? '', d?.thresholds?.ok ?? '', s.rects, s.rtt ?? '']); }
+      ...ITEMS.map(k => f3(im[k]?.prob)), f3((d?.holds || []).find(x => x.item === 'overall')?.prob), d?.threshold_set || '', d?.thresholds?.bad ?? '', d?.thresholds?.ok ?? '', s.rects, s.rtt ?? '']); }
   rows.sort((a, b) => a[1] - b[1]);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + [head, ...rows].map(r => r.map(q).join(',')).join('\n')], { type: 'text/csv' }));
