@@ -237,13 +237,13 @@ function renderDest(){
   const pin='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
   if(q&&!(st.dest&&st.dest.pick&&q===st.dest.n)){   // '현 위치'·'지도에서 고른 곳'은 검색어가 아님
     const hit=DEST.filter(d=>(d.n+d.a).replace(/\s/g,'').includes(q.replace(/\s/g,'')));
-    html=hit.length?`<div class="list" role="listbox">${hit.map(d=>item(d,pin)).join('')}</div>`:`<p class="note">‘${esc(q)}’에 맞는 장소가 없어요. 조사 구역 안 장소만 검색돼요.</p>`;
+    html=hit.length?`<div class="list" role="listbox">${hit.map(d=>item(d,pin)).join('')}</div>`:`<p class="note">‘${esc(q)}’에 맞는 장소가 없어요. 추천 목적지 안에서만 검색돼요.</p>`;
   }else{
     const rs=recent.map(n=>DEST.find(d=>d.n===n)).filter(Boolean);
     const gps='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg>';
     html+=`<div class="list" role="listbox"><button class="item" type="button" role="option" aria-selected="${!!(st.dest&&st.dest.here)}" data-here="1"><span class="ic">${gps}</span><span><b>${HERE}</b><span>${st.locating?'위치 찾는 중…':(st.dest&&st.dest.here?esc(st.dest.a):'지금 있는 곳 기준으로 보기')}</span></span></button></div>`;
     if(rs.length) html+=`<h2>최근 목적지</h2><div class="list" role="listbox">${rs.map(d=>item(d,clock)).join('')}</div>`;
-    html+=`<h2>조사 구역 장소</h2>`;
+    html+=`<h2>추천 목적지</h2>`;
     for(const a of ['아주대·우만동','광교중앙역·이의동','원천동·하동']){
       html+=`<div class="grp">${a}</div><div class="list" role="listbox">${DEST.filter(d=>d.a===a&&!rs.includes(d)).map(d=>item(d,pin)).join('')}</div>`;
     }
