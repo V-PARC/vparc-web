@@ -202,6 +202,12 @@ const SPEED=1.2, DETOUR=1.25, LIMIT=120; // 도보 1.2m/s, 직선거리×1.25 �
 let DATA=null, st={op:'빔',dest:null,cands:[],zone:null};
 const store={get(k,d){try{const v=localStorage.getItem('vparc.'+k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem('vparc.'+k,JSON.stringify(v))}catch(e){}}};
 st.op=store.get('op','빔');
+// 현 위치: 휴대폰 안에서만 쓴다. 지도 중심·추천 기준으로만 쓰고 서버(공백 기록·반납 시작)에는 보내지 않음
+const HERE='현 위치';
+function nearArea(p){let b=null,bd=1e9;for(const d of DEST){const m=dist(p,d);if(m<bd){bd=m;b=d}}return bd<1500?b.a:'조사 구역 밖'}
+function locate(){return new Promise((ok,bad)=>{if(!navigator.geolocation)return bad(new Error('위치를 쓸 수 없는 브라우저'));
+  navigator.geolocation.getCurrentPosition(p=>{const c={lat:p.coords.latitude,lon:p.coords.longitude};ok({n:HERE,a:nearArea(c),...c,pick:true,here:true})},
+    e=>bad(e),{enableHighAccuracy:true,timeout:8000,maximumAge:60000})})}
 
 function dist(a,b){const R=6371000,r=Math.PI/180,dp=(b.lat-a.lat)*r,dl=(b.lon-a.lon)*r;const h=Math.sin(dp/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dl/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
 const walk=m=>m*DETOUR/SPEED;
@@ -229,11 +235,13 @@ function renderDest(){
   const item=(d,ic)=>`<button class="item" type="button" role="option" aria-selected="${st.dest&&st.dest.n===d.n}" data-d="${esc(d.n)}"><span class="ic">${ic}</span><span><b>${esc(d.n)}</b><span>${esc(d.a)}</span></span></button>`;
   const clock='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
   const pin='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
-  if(q){
+  if(q&&!(st.dest&&st.dest.pick&&q===st.dest.n)){   // '현 위치'·'지도에서 고른 곳'은 검색어가 아님
     const hit=DEST.filter(d=>(d.n+d.a).replace(/\s/g,'').includes(q.replace(/\s/g,'')));
     html=hit.length?`<div class="list" role="listbox">${hit.map(d=>item(d,pin)).join('')}</div>`:`<p class="note">‘${esc(q)}’에 맞는 장소가 없어요. 조사 구역 안 장소만 검색돼요.</p>`;
   }else{
     const rs=recent.map(n=>DEST.find(d=>d.n===n)).filter(Boolean);
+    const gps='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg>';
+    html+=`<div class="list" role="listbox"><button class="item" type="button" role="option" aria-selected="${!!(st.dest&&st.dest.here)}" data-here="1"><span class="ic">${gps}</span><span><b>${HERE}</b><span>${st.locating?'위치 찾는 중…':(st.dest&&st.dest.here?esc(st.dest.a):'지금 있는 곳 기준으로 보기')}</span></span></button></div>`;
     if(rs.length) html+=`<h2>최근 목적지</h2><div class="list" role="listbox">${rs.map(d=>item(d,clock)).join('')}</div>`;
     html+=`<h2>조사 구역 장소</h2>`;
     for(const a of ['아주대·우만동','광교중앙역·이의동','원천동·하동']){
@@ -244,10 +252,12 @@ function renderDest(){
   $('#go1').disabled=!st.dest;
 }
 $('#ops').addEventListener('click',e=>{const b=e.target.closest('[data-op]');if(!b)return;st.op=b.dataset.op;store.set('op',st.op);renderOps()});
-$('#dlist').addEventListener('click',e=>{const b=e.target.closest('[data-d]');if(!b)return;st.dest=DEST.find(d=>d.n===b.dataset.d);$('#q').value=st.dest.n;renderDest()});
+function useHere(){st.locating=true;renderDest();
+  locate().then(h=>{st.dest=h;$('#q').value=h.n}).catch(e=>{console.warn('현 위치',e);toast('현 위치를 찾지 못했어요')}).finally(()=>{st.locating=false;renderDest()})}
+$('#dlist').addEventListener('click',e=>{if(e.target.closest('[data-here]')){useHere();return}const b=e.target.closest('[data-d]');if(!b)return;st.dest=DEST.find(d=>d.n===b.dataset.d);$('#q').value=st.dest.n;renderDest()});
 $('#q').addEventListener('input',()=>{if(st.dest&&$('#q').value!==st.dest.n)st.dest=null;renderDest()});
 $('#qclr').addEventListener('click',()=>{$('#q').value='';st.dest=null;renderDest();$('#q').focus()});
-$('#go1').addEventListener('click',()=>{if(!st.dest)return;const r=store.get('recent',[]).filter(n=>n!==st.dest.n);r.unshift(st.dest.n);store.set('recent',r.slice(0,3));location.hash='zones'});
+$('#go1').addEventListener('click',()=>{if(!st.dest)return;if(st.dest.here){location.hash='zones';return}const r=store.get('recent',[]).filter(n=>n!==st.dest.n);r.unshift(st.dest.n);store.set('recent',r.slice(0,3));location.hash='zones'});
 
 /* ---------- UI-02 ---------- */
 function recommend(){
@@ -269,7 +279,7 @@ function drawSvgMap(){
   for(const z of DATA.zones){if(st.cands.some(o=>o.z===z))continue;const [x,y]=P(z);if(x<-10||x>W+10||y<-10||y>H+10)continue;g+=`<circle cx="${x}" cy="${y}" r="4.5" fill="var(--dot)"/>`}
   for(const o of DEST){if(o===d)continue;const [x,y]=P(o);if(x<0||x>W||y<0||y>H)continue;g+=`<text x="${x}" y="${y}" font-size="10.5" fill="var(--ink3)" text-anchor="middle">${esc(o.n.replace(/ \(.*\)/,''))}</text>`}
   st.cands.forEach((o,i)=>{const [x,y]=P(o.z);g+=`<g data-z="${o.z.id}" style="cursor:pointer"><circle cx="${x}" cy="${y}" r="13" fill="var(--pin)" stroke="var(--bg)" stroke-width="2"/><text x="${x}" y="${y+4.5}" font-size="12.5" font-weight="700" fill="var(--pinfg)" text-anchor="middle">${i+1}</text></g>`});
-  g+=`<g><rect x="${cx-26}" y="${cy-34}" width="52" height="20" rx="5" fill="var(--pin)"/><text x="${cx}" y="${cy-20}" font-size="11" font-weight="700" fill="var(--pinfg)" text-anchor="middle">목적지</text><line x1="${cx}" y1="${cy-14}" x2="${cx}" y2="${cy-4}" stroke="var(--pin)" stroke-width="2"/><rect x="${cx-4}" y="${cy-4}" width="8" height="8" fill="var(--pin)"/></g>`;
+  g+=`<g><rect x="${cx-26}" y="${cy-34}" width="52" height="20" rx="5" fill="var(--pin)"/><text x="${cx}" y="${cy-20}" font-size="11" font-weight="700" fill="var(--pinfg)" text-anchor="middle">${d.here?'현 위치':'목적지'}</text><line x1="${cx}" y1="${cy-14}" x2="${cx}" y2="${cy-4}" stroke="var(--pin)" stroke-width="2"/><rect x="${cx-4}" y="${cy-4}" width="8" height="8" fill="var(--pin)"/></g>`;
   const sb=50*k; g+=`<g transform="translate(${W-sb-16},${H-46})"><line x1="0" y1="10" x2="${sb}" y2="10" stroke="var(--ink2)" stroke-width="2"/><line x1="0" y1="5" x2="0" y2="10" stroke="var(--ink2)" stroke-width="2"/><line x1="${sb}" y1="5" x2="${sb}" y2="10" stroke="var(--ink2)" stroke-width="2"/><text x="${sb/2}" y="2" font-size="10.5" fill="var(--ink2)" text-anchor="middle">50 m</text></g>`;
   g+=`<text x="16" y="${H-28}" font-size="10.5" fill="var(--ink3)">점선 = 걸어서 2분 · 회색 점 = 다른 확인 구역</text>`;
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML=g;
@@ -305,7 +315,7 @@ function drawMap(){
     for(const z of DATA.zones){if(st.cands.some(o=>o.z===z))continue;if(dist(d,z)>R*3)continue;
       kmPin('<div class="kdot"></div>',new kakao.maps.LatLng(z.lat,z.lon),1,()=>{location.hash='zone-'+z.id.toLowerCase()})}
     st.cands.forEach((o,i)=>kmPin(`<div class="kpin">${i+1}</div>`,new kakao.maps.LatLng(o.z.lat,o.z.lon),3,()=>{location.hash='zone-'+o.z.id.toLowerCase()}));
-    kmPin('<div class="kdest">목적지</div>',C,4,null);
+    kmPin(`<div class="kdest">${d.here?'현 위치':'목적지'}</div>`,C,4,null);
   }).catch(e=>{console.warn('카카오 지도 실패, 그림 지도로 대신',e);kmTries=(window.kmTries||0)+1;window.kmTries=kmTries;if(kmTries>=2)kmFail=true;kmWait=null;$('#kmap').hidden=true;$('#map').style.visibility='';drawSvgMap();const hint=document.querySelector('.maphint');if(hint)hint.textContent='카카오 지도 못 불러옴('+(e&&e.message||e)+')';});
 }
 function renderZones(){
@@ -315,7 +325,7 @@ function renderZones(){
   let h='';
   if(c.length){
     const o=c[0],z=o.z, same=z.brands.includes(st.op);
-    h+=`<h3>목적지 근처 확인 구역</h3><p class="sub">${esc(d.n)} · 걸어서 2분 안 ${c.length}곳</p>
+    h+=`<h3>${d.here?'현 위치':'목적지'} 근처 확인 구역</h3><p class="sub">${esc(d.n)} · 걸어서 2분 안 ${c.length}곳</p>
     <div class="cards"><button class="card" type="button" data-z="${z.id}">
       <div class="ph"><img src="photos/${esc(z.photo)}.jpg" alt="${esc(placeOf(z))}에 세운 기체 현장 사진" loading="lazy"><span class="tag">현장 사진</span></div>
       <div class="bd"><div class="ttl"><span class="no">1</span><span>${esc(placeOf(z))} · ${esc(sideOf(z))}</span></div>
@@ -324,14 +334,14 @@ function renderZones(){
     c.slice(1).forEach((o,i)=>{const z=o.z;h+=`<button class="row" type="button" data-z="${z.id}"><span class="ic"><img src="photos/${esc(z.photo)}.jpg" alt="" loading="lazy"></span><span style="min-width:0"><b>${i+2}. ${esc(placeOf(z))} · ${esc(sideOf(z))}</b><span class="num">도보 ${mins(o.s)}분 · ${Math.round(o.m)}m · 현장 확인 ${z.n}장면</span></span></button>`});
     h+=`</div><div class="foot"><button class="btn sub" type="button" data-z="${z.id}">구역 자세히</button><button class="btn" type="button" data-go="${z.id}">이 구역으로 출발</button></div>`;
   }else{
-    const gaps=store.get('gaps',[]); if(!gaps.some(g=>g.n===d.n&&Math.abs(g.lat-d.lat)<1e-5)){gaps.push({n:d.n,lat:+d.lat.toFixed(5),lon:+d.lon.toFixed(5),at:new Date().toISOString().slice(0,10)});store.set('gaps',gaps)}
-    sendGap(d);
+    if(!d.here){const gaps=store.get('gaps',[]); if(!gaps.some(g=>g.n===d.n&&Math.abs(g.lat-d.lat)<1e-5)){gaps.push({n:d.n,lat:+d.lat.toFixed(5),lon:+d.lon.toFixed(5),at:new Date().toISOString().slice(0,10)});store.set('gaps',gaps)}
+    sendGap(d);}
     const n=st.nearest;
     h+=`<div class="none"><div class="where">${esc(d.n)}</div>
       <div class="big"><span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span><b>걸어서 2분 안에<br>확인 구역이 없어요</b></div>
       <div class="chk"><i>✓</i>건물·화단 쪽 가장자리에 세워 주세요</div>
       <div class="chk"><i>✓</i>구역 밖도 같은 기준으로 판정해요</div>
-      <div class="box">이 목적지는 구역이 필요한 곳으로 기록돼요.${n?`<br>가장 가까운 확인 구역은 <b class="num">도보 약 ${mins(n.s)}분(${Math.round(n.m)}m)</b> 거리예요. <button type="button" data-z="${n.z.id}" style="border:0;background:none;padding:0;color:var(--ink);font-weight:700;text-decoration:underline">보기</button>`:''}</div></div>
+      <div class="box">${d.here?'지금 있는 곳 근처에 확인 구역이 없어요.':'이 목적지는 구역이 필요한 곳으로 기록돼요.'}${n?`<br>가장 가까운 확인 구역은 <b class="num">도보 약 ${mins(n.s)}분(${Math.round(n.m)}m)</b> 거리예요. <button type="button" data-z="${n.z.id}" style="border:0;background:none;padding:0;color:var(--ink);font-weight:700;text-decoration:underline">보기</button>`:''}</div></div>
       <div class="foot"><button class="btn sub" type="button" id="ex">주차 예시</button><button class="btn" type="button" id="goany">이대로 출발</button></div>`;
   }
   $('#sheet').innerHTML=h;
@@ -379,7 +389,7 @@ function sendGap(d){
       .then(r=>{if(r.ok){sent[key]=day;store.set('gaps_sent',sent)}});
   }).catch(e=>console.warn('공백 기록 실패',e));
 }
-function shootUrl(z){const p=new URLSearchParams({new:'1',op:OPCODE[st.op]||'BEAM'});if(SESSION)p.set('session',SESSION);if(z){p.set('zone',z.id);p.set('place',placeOf(z)+' · '+sideOf(z))}else p.set('place',(st.dest&&st.dest.n)||'구역 밖');if(st.dest){const i=destInfo(st.dest);p.set('dest',st.dest.n);p.set('dest_id',destId(st.dest));p.set('dest_lat',i.lat);p.set('dest_lon',i.lon);if(i.region)p.set('dest_a',i.region)}return 'shoot.html?'+p}
+function shootUrl(z){const p=new URLSearchParams({new:'1',op:OPCODE[st.op]||'BEAM'});if(SESSION)p.set('session',SESSION);if(z){p.set('zone',z.id);p.set('place',placeOf(z)+' · '+sideOf(z))}else p.set('place',(st.dest&&st.dest.n)||'구역 밖');if(st.dest&&!st.dest.here){const i=destInfo(st.dest);p.set('dest',st.dest.n);p.set('dest_id',destId(st.dest));p.set('dest_lat',i.lat);p.set('dest_lon',i.lon);if(i.region)p.set('dest_a',i.region)}return 'shoot.html?'+p}
 const TIP={측면:'기체 옆으로 두세 걸음 물러나 바퀴 두 개와 바닥이 다 보이게',정면:'기체 앞에서 두세 걸음 물러나 양옆 바닥이 보이게','위(내려다봄)':'기체 옆에 서서 내려다보되 바퀴 두 개가 다 들어오게'};
 // UI-04 반납하기 화면을 거쳐 촬영으로
 function retUrl(z){const p=new URLSearchParams({next:shootUrl(z),op:OPCODE[st.op]||'BEAM'});if(z){p.set('zone',z.id);p.set('place',placeOf(z));p.set('side',sideOf(z));p.set('caution',caution(z));p.set('photo',z.photo);p.set('tip',TIP[z.angle]||TIP['측면'])}if(st.dest)p.set('dest',st.dest.n);return 'return.html?'+p}
@@ -400,8 +410,18 @@ window.addEventListener('hashchange',route);
 window.addEventListener('resize',()=>{if(!$('#s2').hidden)drawMap()});
 fetch('reco_data.json').then(r=>r.json()).then(j=>{DATA=j;
   $('#srcnote').textContent=`시험판 · 현장 사진으로 적합 판정을 받은 ${j.zones.length}곳을 확인 구역으로 써요 (기록표 10/27). 도보시간은 직선거리 기준 추정값이에요.`;
-  if(!st.dest){const r=store.get('recent',[]);st.dest=DEST.find(d=>d.n===r[0])||null; if(st.dest)$('#q').value=st.dest.n;}
-  if(!st.dest && !location.hash){st.dest=DEST.find(d=>d.n==='광교중앙역 출입구');$('#q').value=st.dest.n}
+  const recentDest=()=>{const r=store.get('recent',[]);return DEST.find(d=>d.n===r[0])||null};
+  const station=()=>DEST.find(d=>d.n==='광교중앙역 출입구');
+  // 처음 열면 현 위치를 기준으로. 위치를 못 받으면 최근 목적지, 그것도 없으면 광교중앙역
+  if(!st.dest && !location.hash && navigator.geolocation){
+    st.locating=true; route();
+    locate().then(h=>{if(st.dest||$('#q').value)return;st.dest=h;$('#q').value=h.n})
+      .catch(e=>{console.warn('현 위치',e);if(st.dest||$('#q').value)return;st.dest=recentDest()||station();$('#q').value=st.dest.n;toast('현 위치를 찾지 못해 '+st.dest.n.replace(/ \(.*\)/,'')+' 기준으로 보여 드려요')})
+      .finally(()=>{st.locating=false;route()});
+    return;
+  }
+  if(!st.dest){st.dest=recentDest(); if(st.dest)$('#q').value=st.dest.n;}
+  if(!st.dest && !location.hash){st.dest=station();$('#q').value=st.dest.n}
   route()}).catch(()=>{$('#dlist').innerHTML='<p class="note">구역 데이터를 불러오지 못했어요. 새로고침해 주세요.</p>'});
 })();
 </script>
