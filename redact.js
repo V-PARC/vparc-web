@@ -1,6 +1,7 @@
 // V-PARC 사람 가림(A3) — 휴대폰 안에서만 실행. 원본 픽셀·EXIF는 밖으로 나가지 않는다.
 // 사용: const r = await redact(canvas, scooterBox, { segmenter, faceDetector });
-//       r.lost이면 사진 없이 추가 확인 접수(UC-11), 아니면 r.blob(JPEG, EXIF 없음)을 전송
+//       r.blob(흐림 처리된 JPEG, EXIF 없음)을 전송. r.lost(근거 손실)여도 흐린 사진은 보낸다:
+//       API는 가림 실패(FAILED)만 사진 없이 받고, 근거 손실은 사진이 있어야 추가 확인으로 접수한다(없으면 400)
 export const MARGIN = 0.08;      // 사람 영역 상하좌우 여유 8%
 export const BOX_LOSS = 0.20;    // 가린 영역이 킥보드 박스의 20% 이상이면 근거 손실
 export const FLOOR_LOSS = 0.50;  // 바닥(박스 아래쪽 띠)의 절반 이상을 가리면 근거 손실
@@ -86,6 +87,6 @@ export async function redact(src, box, { segmenter, faceDetector, personIndex } 
   rects = rects.map(r => expand(r, W, H));
   for (const r of rects) blurRect(g, r);
   const loss = coverLoss(rects, box, W, H);
-  const blob = loss.lost ? null : await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+  const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
   return { ...loss, rects, canvas: c, blob };
 }

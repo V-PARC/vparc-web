@@ -157,7 +157,7 @@ async function shoot(api, { seg = 'person', route = null, gps = true, extra = ''
   const db = sql(api.db, "SELECT count(*) n, sum(photo_path IS NOT NULL) with_photo FROM judgments");
   record('T8', '서버 DB: 가림 실패 판정에 저장된 사진', db[0].with_photo === 0, db[0]);
 
-  // 참고: 가림이 판정 근거를 덮은 경우(EVIDENCE_LOSS)도 사진 없이 가야 함
+  // 가림이 판정 근거를 덮은 경우(EVIDENCE_LOSS): 흐린 사진과 함께 보내 추가 확인으로 접수돼야 함 (API는 FAILED만 사진 없이 받음)
   const statuses = [];
   const r = await shoot(api, { seg: 'cover', route: async (rt) => { const resp = await rt.fetch(); const b = await resp.text();
     statuses.push(resp.status() + ' ' + b.slice(0, 120)); return rt.fulfill({ response: resp, body: b }); } });
