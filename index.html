@@ -141,6 +141,7 @@ p,span,b,dd,li,h1,h2,h3,button,a,div{text-wrap:pretty}
       <input id="q" type="search" placeholder="목적지 검색 (예: 광교중앙역)" autocomplete="off">
       <button class="clr" id="qclr" type="button" aria-label="지우기" hidden>✕</button>
     </label>
+    <p class="cap" id="basis" hidden></p>
     <h2>이용할 기체</h2>
     <div class="chips" id="ops" role="group" aria-label="운영사"></div>
     <p class="cap">운영사마다 반납할 수 있는 구역이 달라요</p>
@@ -231,6 +232,7 @@ function renderOps(){
 }
 function renderDest(){
   const q=$('#q').value.trim(); $('#qclr').hidden=!q;
+  const bs=$('#basis'); bs.hidden=!(st.dest&&st.dest.here)&&!st.locating; bs.textContent=st.dest&&st.dest.here?'지금 있는 곳 근처 구역을 보여드리고 있어요. 목적지를 검색하면 그곳 기준으로 바뀌어요.':'지금 있는 곳을 찾는 중이에요…';
   const recent=store.get('recent',[]);
   let html='';
   const item=(d,ic)=>`<button class="item" type="button" role="option" aria-selected="${st.dest&&st.dest.n===d.n}" data-d="${esc(d.n)}"><span class="ic">${ic}</span><span><b>${esc(d.n)}</b><span>${esc(d.a)}</span></span></button>`;
@@ -242,7 +244,7 @@ function renderDest(){
   }else{
     const rs=recent.map(n=>DEST.find(d=>d.n===n)).filter(Boolean);
     const gps='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg>';
-    html+=`<div class="list" role="listbox"><button class="item" type="button" role="option" aria-selected="${!!(st.dest&&st.dest.here)}" data-here="1"><span class="ic">${gps}</span><span><b>${HERE}</b><span>${st.locating?'위치 찾는 중…':(st.dest&&st.dest.here?esc(st.dest.a):'지금 있는 곳 기준으로 보기')}</span></span></button></div>`;
+    html+=`<div class="list" role="listbox"><button class="item" type="button" role="option" aria-selected="${!!(st.dest&&st.dest.here)}" data-here="1"><span class="ic">${gps}</span><span><b>지금 있는 곳 근처에 세우기</b><span>${st.locating?'위치 찾는 중…':(st.dest&&st.dest.here?esc(st.dest.a):'지금 있는 곳 기준으로 보기')}</span></span></button></div>`;
     if(rs.length) html+=`<h2>최근 목적지</h2><div class="list" role="listbox">${rs.map(d=>item(d,clock)).join('')}</div>`;
     html+=`<h2>추천 목적지</h2>`;
     for(const a of ['아주대·우만동','광교중앙역·이의동','원천동·하동']){
@@ -254,7 +256,7 @@ function renderDest(){
 }
 $('#ops').addEventListener('click',e=>{const b=e.target.closest('[data-op]');if(!b)return;st.op=b.dataset.op;store.set('op',st.op);renderOps()});
 function useHere(){st.locating=true;renderDest();
-  locate().then(h=>{st.dest=h;$('#q').value=h.n}).catch(e=>{console.warn('현 위치',e);toast('현 위치를 찾지 못했어요')}).finally(()=>{st.locating=false;renderDest()})}
+  locate().then(h=>{st.dest=h;$('#q').value=''}).catch(e=>{console.warn('현 위치',e);toast('현 위치를 찾지 못했어요')}).finally(()=>{st.locating=false;renderDest()})}
 $('#dlist').addEventListener('click',e=>{if(e.target.closest('[data-here]')){useHere();return}const b=e.target.closest('[data-d]');if(!b)return;st.dest=DEST.find(d=>d.n===b.dataset.d);$('#q').value=st.dest.n;renderDest()});
 $('#q').addEventListener('input',()=>{if(st.dest&&$('#q').value!==st.dest.n)st.dest=null;renderDest()});
 $('#qclr').addEventListener('click',()=>{$('#q').value='';st.dest=null;renderDest();$('#q').focus()});
@@ -416,7 +418,7 @@ fetch('reco_data.json').then(r=>r.json()).then(j=>{DATA=j;
   // 처음 열면 현 위치를 기준으로. 위치를 못 받으면 최근 목적지, 그것도 없으면 광교중앙역
   if(!st.dest && !location.hash && navigator.geolocation){
     st.locating=true; route();
-    locate().then(h=>{if(st.dest||$('#q').value)return;st.dest=h;$('#q').value=h.n})
+    locate().then(h=>{if(st.dest||$('#q').value)return;st.dest=h})
       .catch(e=>{console.warn('현 위치',e);if(st.dest||$('#q').value)return;st.dest=recentDest()||station();$('#q').value=st.dest.n;toast('현 위치를 찾지 못해 '+st.dest.n.replace(/ \(.*\)/,'')+' 기준으로 보여 드려요')})
       .finally(()=>{st.locating=false;route()});
     return;
